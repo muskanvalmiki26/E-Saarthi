@@ -8,11 +8,13 @@ import os
 
 import requests
 
-from database import engine, Base, User, Session, EmergencyContact
+from database import engine, Base, User, Session, EmergencyContact, SafetyData
 
 from security import hash_password, verify_password, create_access_token, get_current_user
 
 from dotenv import load_dotenv
+
+from safety import get_risk_level, calculate_safety_score, select_route_options
 
 load_dotenv()
 
@@ -35,14 +37,6 @@ class EmergencyContactCreate(BaseModel):
     name: str
     phone: str
     relation: str | None = None
-
-def get_risk_level(safety_score: float):
-    if safety_score >= 80:
-        return "Low"
-    elif safety_score >= 60:
-        return "Medium"
-    else:
-        return "High"
 
 def get_weather_score(latitude: float, longitude: float):
     api_key = os.getenv("OPENWEATHER_API_KEY")
@@ -110,101 +104,72 @@ def get_weather_score(latitude: float, longitude: float):
     except Exception:
         return 70, {"status": "Weather service error"}
 
-def get_demo_safety_factors(route_id):
+def get_safety_data(latitude, longitude):
+    db = Session()
+
+    try:
+        safety_data = db.query(SafetyData).all()
+
+        if not safety_data:
+            return None
+
+        nearest = min(
+            safety_data,
+            key=lambda data: (
+                (data.latitude - latitude) ** 2
+                + (data.longitude - longitude) ** 2
+            )
+        )
+
+        return {
+            "crime_score": nearest.crime_score,
+            "traffic_score": nearest.traffic_score,
+            "road_score": nearest.road_score,
+            "accident_score": nearest.accident_score
+        }
+
+    finally:
+        db.close()
+
+def get_route_safety_factors(route_id):
     """
-    Temporary demo values.
-    Later these values will come from real crime,
-    traffic, weather, road and accident data.
+    Returns safety factors for a route.
+
+    Temporary:
+    Values are placeholders until real crime, traffic,
+    road and accident data are integrated.
     """
 
-    demo_factors = {
+    safety_factors = {
         1: {
             "crime_score": 90,
             "traffic_score": 70,
-            "weather_score": 90,
             "road_score": 85,
             "accident_score": 80
         },
         2: {
             "crime_score": 75,
             "traffic_score": 85,
-            "weather_score": 90,
             "road_score": 75,
             "accident_score": 70
         },
         3: {
             "crime_score": 55,
             "traffic_score": 80,
-            "weather_score": 85,
             "road_score": 60,
             "accident_score": 45
         }
     }
 
-    return demo_factors.get(
+    return safety_factors.get(
         route_id,
         {
             "crime_score": 70,
             "traffic_score": 70,
-            "weather_score": 70,
             "road_score": 70,
             "accident_score": 70
         }
     )
-
-def calculate_safety_score(
-    crime_score: float,
-    traffic_score: float,
-    weather_score: float,
-    road_score: float,
-    accident_score: float
-):
-    score = (
-        crime_score * 0.30 +
-        traffic_score * 0.20 +
-        weather_score * 0.15 +
-        road_score * 0.20 +
-        accident_score * 0.15
-    )
-
-    return round(score, 2)
-
-def select_route_options(routes):
-    if not routes:
-        return {
-            "safest": None,
-            "balanced": None,
-            "fastest": None
-        }
-
-    safest = max(routes, key=lambda r: r["safety_score"])
-
-    fastest = min(routes, key=lambda r: r["duration_minutes"])
-
-    min_duration = min(r["duration_minutes"] for r in routes)
-    max_duration = max(r["duration_minutes"] for r in routes)
-
-    if max_duration == min_duration:
-        balanced = safest
-    else:
-        for route in routes:
-            time_score = (
-                (max_duration - route["duration_minutes"])
-                / (max_duration - min_duration)
-            ) * 100
-
-            route["balanced_score"] = round(
-                route["safety_score"] * 0.6
-                + time_score * 0.4, 2
-            )
-
-        balanced = max(routes, key=lambda r: r["balanced_score"])
-
-    return {
-        "safest": safest["route_id"],
-        "balanced": balanced["route_id"],
-        "fastest": fastest["route_id"]
-    }
 
 app = FastAPI()
 
@@ -296,7 +261,8 @@ def get_routes(route_data: RouteRequest):
             "target_count": 3,
             "share_factor": 0.8,
             "weight_factor": 2
-        }
+        },
+        "format": "geojson"
     }
 
     response = requests.post(
@@ -321,7 +287,13 @@ def get_routes(route_data: RouteRequest):
     )
 
     for index, route in enumerate(result.get("routes", []), start=1):
-        safety_factors = get_demo_safety_factors(index)
+        safety_factors = get_safety_data(
+          route_data.current_latitude,
+          route_data.current_longitude
+        )
+        if safety_factors is None:
+            safety_factors = get_route_safety_factors(index)
+
         safety_factors["weather_score"] = weather_score
         safety_score = calculate_safety_score(
             crime_score=safety_factors["crime_score"],

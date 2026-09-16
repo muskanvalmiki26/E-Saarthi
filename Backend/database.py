@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
@@ -33,5 +33,20 @@ class EmergencyContact(Base):
     name = Column(String, nullable=False)
     phone = Column(String, nullable=False)
     relation = Column(String, nullable=True)
+
+class SafetyData(Base):
+    __tablename__ = "safety_data"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+
+    crime_score = Column(Float, nullable=True)
+    traffic_score = Column(Float, nullable=True)
+    road_score = Column(Float, nullable=True)
+    accident_score = Column(Float, nullable=True)
+
+    source = Column(String, nullable=True)
 
 print("Database connection setup ready!")

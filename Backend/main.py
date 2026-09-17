@@ -12,11 +12,15 @@ from database import engine, Base, User, Session, EmergencyContact, SafetyData
 
 from security import hash_password, verify_password, create_access_token, get_current_user
 
+import math
+
 from dotenv import load_dotenv
 
 from safety import get_risk_level, calculate_safety_score, select_route_options
 
 load_dotenv()
+
+app = FastAPI()
 
 class UserCreate(BaseModel):
     name: str
@@ -37,6 +41,11 @@ class EmergencyContactCreate(BaseModel):
     name: str
     phone: str
     relation: str | None = None
+
+class EmergencyServiceRequest(BaseModel):
+    latitude: float
+    longitude: float
+    service_type: str
 
 def get_weather_score(latitude: float, longitude: float):
     api_key = os.getenv("OPENWEATHER_API_KEY")
@@ -131,6 +140,85 @@ def get_safety_data(latitude, longitude):
     finally:
         db.close()
 
+def get_nearby_emergency_services(latitude, longitude, service_type):
+
+    query = f"""
+    [out:json];
+    (
+      node["amenity"="{service_type}"](around:5000,{latitude},{longitude});
+      way["amenity"="{service_type}"](around:5000,{latitude},{longitude});
+    );
+    out center;
+    """
+
+    headers = {
+        "User-Agent": "eSaarthi/1.0 (Thakur College Data Science Project)",
+        "Accept": "application/json",
+        "Content-Type": "text/plain"
+    }
+
+    response = requests.post(
+        "https://overpass-api.de/api/interpreter",
+        data=query,
+        headers=headers,
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    services = []
+
+    for element in data.get("elements", []):
+        tags = element.get("tags", {})
+
+        if element["type"] == "node":
+            service_lat = element.get("lat")
+            service_lon = element.get("lon")
+        else:
+            center = element.get("center", {})
+            service_lat = center.get("lat")
+            service_lon = center.get("lon")
+
+        if service_lat is None or service_lon is None:
+            continue
+
+        # Calculate approximate distance from user's location
+        lat_diff = service_lat - latitude
+        lon_diff = service_lon - longitude
+
+        distance = math.sqrt(
+            lat_diff ** 2 + lon_diff ** 2
+        ) * 111
+
+        services.append({
+            "name": tags.get("name", "Unnamed"),
+            "latitude": service_lat,
+            "longitude": service_lon,
+            "service_type": service_type,
+            "phone": tags.get("phone"),
+            "distance_km": round(distance, 2)
+        })
+
+    # Nearest service first
+    services.sort(key=lambda service: service["distance_km"])
+
+    return services
+@app.post("/emergency-services")
+def emergency_services(service_request: EmergencyServiceRequest):
+
+    services = get_nearby_emergency_services(
+        service_request.latitude,
+        service_request.longitude,
+        service_request.service_type
+    )
+
+    return {
+        "count": len(services),
+        "services": services
+    }
+
 def get_route_safety_factors(route_id):
     """
     Returns safety factors for a route.
@@ -171,7 +259,6 @@ def get_route_safety_factors(route_id):
         }
     )
 
-app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
 

@@ -8,7 +8,7 @@ import os
 
 import requests
 
-from database import engine, Base, User, Session, EmergencyContact, SafetyData
+from database import engine, Base, User, Session, EmergencyContact, SafetyData, SOSRecord
 
 from security import hash_password, verify_password, create_access_token, get_current_user
 
@@ -46,6 +46,11 @@ class EmergencyServiceRequest(BaseModel):
     latitude: float
     longitude: float
     service_type: str
+
+class SOSRequest(BaseModel):
+    latitude: float
+    longitude: float
+    message: str | None = None
 
 def get_weather_score(latitude: float, longitude: float):
     api_key = os.getenv("OPENWEATHER_API_KEY")
@@ -217,6 +222,91 @@ def emergency_services(service_request: EmergencyServiceRequest):
     return {
         "count": len(services),
         "services": services
+    }
+
+@app.post("/sos")
+def create_sos(
+    sos_data: SOSRequest,
+    user_id: str = Depends(get_current_user)
+):
+    db = Session()
+
+    sos = SOSRecord(
+        user_id=int(user_id),
+        latitude=sos_data.latitude,
+        longitude=sos_data.longitude,
+        message=sos_data.message,
+        status="active"
+    )
+
+    db.add(sos)
+    db.commit()
+    db.refresh(sos)
+    db.close()
+
+    return {
+        "message": "SOS activated successfully",
+        "sos_id": sos.id,
+        "user_id": int(user_id),
+        "latitude": sos.latitude,
+        "longitude": sos.longitude,
+        "status": sos.status
+    }
+
+@app.get("/sos")
+def get_sos_records(
+    user_id: str = Depends(get_current_user)
+):
+    db = Session()
+
+    records = db.query(SOSRecord).filter(
+        SOSRecord.user_id == int(user_id)
+    ).order_by(SOSRecord.id.desc()).all()
+
+    result = []
+
+    for record in records:
+        result.append({
+            "sos_id": record.id,
+            "latitude": record.latitude,
+            "longitude": record.longitude,
+            "message": record.message,
+            "status": record.status
+        })
+
+    db.close()
+
+    return {
+        "count": len(result),
+        "sos_records": result
+    }
+
+@app.put("/sos/{sos_id}/resolve")
+def resolve_sos(
+    sos_id: int,
+    user_id: str = Depends(get_current_user)
+):
+    db = Session()
+
+    sos = db.query(SOSRecord).filter(
+        SOSRecord.id == sos_id,
+        SOSRecord.user_id == int(user_id)
+    ).first()
+
+    if not sos:
+        db.close()
+        return {"error": "SOS record not found"}
+
+    sos.status = "resolved"
+
+    db.commit()
+    db.refresh(sos)
+    db.close()
+
+    return {
+        "message": "SOS resolved successfully",
+        "sos_id": sos.id,
+        "status": sos.status
     }
 
 def get_route_safety_factors(route_id):

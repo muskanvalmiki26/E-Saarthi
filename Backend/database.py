@@ -34,6 +34,18 @@ class EmergencyContact(Base):
     phone = Column(String, nullable=False)
     relation = Column(String, nullable=True)
 
+class SOSRecord(Base):
+    __tablename__ = "sos_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+
+    message = Column(String, nullable=True)
+    status = Column(String, default="active")
+
 class SafetyData(Base):
     __tablename__ = "safety_data"
 

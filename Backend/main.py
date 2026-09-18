@@ -669,6 +669,49 @@ class RouteProgressRequest(BaseModel):
     route_latitude: float = Field(..., ge=-90, le=90)
     route_longitude: float = Field(..., ge=-180, le=180)
 
+class HazardAlertRequest(BaseModel):
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+
+def generate_hazard_alert(latitude, longitude):
+
+    weather_score, weather_info = get_weather_score(
+        latitude,
+        longitude
+    )
+
+    alerts = []
+
+    condition = weather_info.get("condition", "").lower()
+    rain = weather_info.get("rain_1h_mm", 0)
+    visibility = weather_info.get("visibility_m", 10000)
+
+    if condition == "thunderstorm":
+        alerts.append("Thunderstorm detected. Avoid travelling if possible.")
+
+    if rain >= 10:
+        alerts.append("Heavy rain detected. Road conditions may be unsafe.")
+
+    if visibility < 2000:
+        alerts.append("Low visibility detected. Travel carefully.")
+
+    return {
+        "weather_score": weather_score,
+        "weather_info": weather_info,
+        "hazard_alerts": alerts,
+        "alert_count": len(alerts)
+    }
+
+@app.post("/hazard-alerts")
+def hazard_alerts(data: HazardAlertRequest):
+
+    result = generate_hazard_alert(
+        data.latitude,
+        data.longitude
+    )
+
+    return result
+
 
 @app.post("/route-deviation")
 def check_route_deviation(data: DeviationRequest):

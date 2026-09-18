@@ -145,6 +145,16 @@ def get_safety_data(latitude, longitude):
     finally:
         db.close()
 
+def calculate_distance_km(lat1, lon1, lat2, lon2):
+    lat_diff = lat2 - lat1
+    lon_diff = lon2 - lon1
+
+    distance = math.sqrt(
+        lat_diff ** 2 + lon_diff ** 2
+    ) * 111
+
+    return round(distance, 3)
+
 def get_nearby_emergency_services(latitude, longitude, service_type):
 
     query = f"""
@@ -587,3 +597,71 @@ def get_emergency_contacts(
     db.close()
 
     return result
+
+@app.get("/sos/{sos_id}/contacts")
+def get_sos_contacts(
+    sos_id: int,
+    user_id: str = Depends(get_current_user)
+):
+    db = Session()
+
+    # Check that SOS belongs to logged-in user
+    sos = db.query(SOSRecord).filter(
+        SOSRecord.id == sos_id,
+        SOSRecord.user_id == int(user_id)
+    ).first()
+
+    if not sos:
+        db.close()
+        return {"error": "SOS record not found"}
+
+    # Get user's emergency contacts
+    contacts = db.query(EmergencyContact).filter(
+        EmergencyContact.user_id == int(user_id)
+    ).all()
+
+    result = []
+
+    for contact in contacts:
+        result.append({
+            "name": contact.name,
+            "phone": contact.phone,
+            "relation": contact.relation
+        })
+
+    db.close()
+
+    return {
+        "sos_id": sos.id,
+        "sos_status": sos.status,
+        "latitude": sos.latitude,
+        "longitude": sos.longitude,
+        "message": sos.message,
+        "emergency_contacts": result
+    }
+
+class DeviationRequest(BaseModel):
+    current_latitude: float
+    current_longitude: float
+    route_latitude: float
+    route_longitude: float
+    threshold_km: float = 0.2
+
+
+@app.post("/route-deviation")
+def check_route_deviation(data: DeviationRequest):
+
+    distance = calculate_distance_km(
+        data.current_latitude,
+        data.current_longitude,
+        data.route_latitude,
+        data.route_longitude
+    )
+
+    deviated = distance > data.threshold_km
+
+    return {
+        "distance_from_route_km": distance,
+        "threshold_km": data.threshold_km,
+        "route_deviation": deviated
+    }

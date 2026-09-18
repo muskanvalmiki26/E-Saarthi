@@ -42,9 +42,16 @@ class EmergencyContactCreate(BaseModel):
     phone: str
     relation: str | None = None
 
+ALLOWED_SERVICE_TYPES = {
+    "hospital",
+    "police",
+    "fire_station",
+    "pharmacy"
+}
+
 class EmergencyServiceRequest(BaseModel):
-    latitude: float
-    longitude: float
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
     service_type: str
 
 class SOSRequest(BaseModel):
@@ -219,9 +226,18 @@ def get_nearby_emergency_services(latitude, longitude, service_type):
     # Nearest service first
     services.sort(key=lambda service: service["distance_km"])
 
+    services = services[:10]
+
     return services
+
 @app.post("/emergency-services")
 def emergency_services(service_request: EmergencyServiceRequest):
+
+    if service_request.service_type not in ALLOWED_SERVICE_TYPES:
+        return {
+            "error": "Invalid service type",
+            "allowed_service_types": list(ALLOWED_SERVICE_TYPES)
+        }
 
     services = get_nearby_emergency_services(
         service_request.latitude,

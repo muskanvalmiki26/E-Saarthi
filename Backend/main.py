@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import os
 
@@ -32,10 +32,10 @@ class UserLogin(BaseModel):
     password: str
 
 class RouteRequest(BaseModel):
-    current_latitude: float
-    current_longitude: float
-    destination_latitude: float
-    destination_longitude: float
+    current_latitude: float = Field(..., ge=-90, le=90)
+    current_longitude: float = Field(..., ge=-180, le=180)
+    destination_latitude: float = Field(..., ge=-90, le=90)
+    destination_longitude: float = Field(..., ge=-180, le=180)
 
 class EmergencyContactCreate(BaseModel):
     name: str

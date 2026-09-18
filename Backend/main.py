@@ -665,3 +665,66 @@ def check_route_deviation(data: DeviationRequest):
         "threshold_km": data.threshold_km,
         "route_deviation": deviated
     }
+
+class RerouteRequest(BaseModel):
+    current_latitude: float
+    current_longitude: float
+    destination_latitude: float
+    destination_longitude: float
+
+@app.post("/reroute")
+def reroute(route_data: RerouteRequest):
+
+    ors_api_key = os.getenv("ORS_API_KEY")
+
+    if not ors_api_key:
+        return {"error": "ORS API key is not configured"}
+
+    url = "https://api.heigit.org/openrouteservice/v2/directions/driving-car"
+
+    headers = {
+        "Authorization": ors_api_key,
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "coordinates": [
+            [
+                route_data.current_longitude,
+                route_data.current_latitude
+            ],
+            [
+                route_data.destination_longitude,
+                route_data.destination_latitude
+            ]
+        ],
+        "format": "geojson"
+    }
+
+    response = requests.post(
+        url,
+        headers=headers,
+        json=data
+    )
+
+    if response.status_code != 200:
+        return {
+            "error": "Unable to generate reroute",
+            "status_code": response.status_code,
+            "details": response.text
+        }
+
+    result = response.json()
+
+    route = result["routes"][0]
+
+    return {
+        "message": "New route generated successfully",
+        "distance_km": round(
+            route["summary"]["distance"] / 1000, 2
+        ),
+        "duration_minutes": round(
+            route["summary"]["duration"] / 60
+        ),
+        "geometry": route["geometry"]
+    }

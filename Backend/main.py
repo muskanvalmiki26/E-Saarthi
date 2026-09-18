@@ -481,19 +481,68 @@ def get_routes(route_data: RouteRequest):
             "details": response.text
         }
 
-    result = response.json()
+    try:
+        result = response.json()
+    except ValueError:
+        return {
+            "error": "Invalid response from routing service",
+            "message": "The routing service returned an unexpected response."
+        }
 
-    routes = []
+    routes = result.get("routes", [])
+
+    if not routes:
+        return {
+            "error": "No routes found",
+            "message": "No route could be generated for the given locations."
+        }
+
     weather_score, weather_info = get_weather_score(
-            route_data.destination_latitude,
-            route_data.destination_longitude
+        route_data.destination_latitude,
+        route_data.destination_longitude
     )
 
-    for index, route in enumerate(result.get("routes", []), start=1):
+    scored_routes = []
+
+    for index, route in enumerate(routes, start=1):
+        if "summary" not in route:
+            continue
+
         safety_factors = get_safety_data(
-          route_data.current_latitude,
-          route_data.current_longitude
+            route_data.current_latitude,
+            route_data.current_longitude
         )
+
+        if safety_factors is None:
+            safety_factors = get_route_safety_factors(index)
+
+        safety_factors["weather_score"] = weather_score
+
+        safety_score = calculate_safety_score(
+            crime_score=safety_factors["crime_score"],
+            traffic_score=safety_factors["traffic_score"],
+            weather_score=safety_factors["weather_score"],
+            road_score=safety_factors["road_score"],
+            accident_score=safety_factors["accident_score"]
+        )
+
+        risk_level = get_risk_level(safety_score)
+
+        scored_routes.append({
+            "route_id": index,
+            "distance_km": round(
+                route["summary"]["distance"] / 1000, 2
+            ),
+            "duration_minutes": round(
+            route["summary"]["duration"] / 60
+            ),
+            "safety_score": safety_score,
+            "risk_level": risk_level,
+            "safety_factors": safety_factors,
+            "weather_info": weather_info,
+            "geometry": route["geometry"]
+        })
+
         if safety_factors is None:
             safety_factors = get_route_safety_factors(index)
 
@@ -523,10 +572,10 @@ def get_routes(route_data: RouteRequest):
             "geometry": route["geometry"]
        })
 
-    route_options = select_route_options(routes)
+    route_options = select_route_options(scored_routes)
 
     return {
-        "routes": routes,
+        "routes": scored_routes,
         "recommended_routes": route_options
     }
     
@@ -788,17 +837,29 @@ def reroute(route_data: RerouteRequest):
         "format": "geojson"
     }
 
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data
-    )
+    try:
+        response = requests.post(
+            url,
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+    except requests.exceptions.Timeout:
+        return {
+            "error": "Routing service timed out",
+            "message": "Unable to get route at the moment. Please try again."
+        }
+    except requests.exceptions.RequestException:
+        return {
+            "error": "Routing service unavailable",
+            "message": "Unable to connect to the routing service."
+        }
 
     if response.status_code != 200:
         return {
-            "error": "Unable to generate reroute",
+            "error": "Unable to get routes",
             "status_code": response.status_code,
-            "details": response.text
+            "message": "Routing service returned an error. Please check the route details and try again."
         }
 
     result = response.json()

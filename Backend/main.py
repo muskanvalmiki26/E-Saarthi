@@ -663,6 +663,12 @@ class DeviationRequest(BaseModel):
     route_longitude: float
     threshold_km: float = 0.2
 
+class RouteProgressRequest(BaseModel):
+    current_latitude: float = Field(..., ge=-90, le=90)
+    current_longitude: float = Field(..., ge=-180, le=180)
+    route_latitude: float = Field(..., ge=-90, le=90)
+    route_longitude: float = Field(..., ge=-180, le=180)
+
 
 @app.post("/route-deviation")
 def check_route_deviation(data: DeviationRequest):
@@ -680,6 +686,28 @@ def check_route_deviation(data: DeviationRequest):
         "distance_from_route_km": distance,
         "threshold_km": data.threshold_km,
         "route_deviation": deviated
+    }
+
+@app.post("/route-progress")
+def route_progress(data: RouteProgressRequest):
+
+    distance = calculate_distance_km(
+        data.current_latitude,
+        data.current_longitude,
+        data.route_latitude,
+        data.route_longitude
+    )
+
+    return {
+        "current_location": {
+            "latitude": data.current_latitude,
+            "longitude": data.current_longitude
+        },
+        "route_location": {
+            "latitude": data.route_latitude,
+            "longitude": data.route_longitude
+        },
+        "distance_from_route_km": distance
     }
 
 class RerouteRequest(BaseModel):

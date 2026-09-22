@@ -14,6 +14,21 @@ def calculate_safety_score(
     road_score: float,
     accident_score: float
 ):
+    scores = [
+        crime_score,
+        traffic_score,
+        weather_score,
+        road_score,
+        accident_score
+    ]
+
+    scores = [
+        max(0, min(100, score))
+        for score in scores
+    ]
+
+    crime_score, traffic_score, weather_score, road_score, accident_score = scores
+
     score = (
         crime_score * 0.30 +
         traffic_score * 0.20 +
@@ -22,8 +37,7 @@ def calculate_safety_score(
         accident_score * 0.15
     )
 
-    return round(score, 2)
-
+    return round(max(0, min(100, score)), 2)
 
 def select_route_options(routes):
     if not routes:

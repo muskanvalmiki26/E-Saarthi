@@ -1,6 +1,4 @@
-from fastapi import FastAPI
-
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 
 from pydantic import BaseModel, Field
 
@@ -8,7 +6,7 @@ import os
 
 import requests
 
-from database import engine, Base, User, Session, EmergencyContact, SafetyData, SOSRecord
+from database import engine, Base, User, Session, EmergencyContact, SafetyData, SOSRecord, RouteHistory
 
 from security import hash_password, verify_password, create_access_token, get_current_user
 
@@ -42,6 +40,15 @@ class EmergencyContactCreate(BaseModel):
     phone: str
     relation: str | None = None
 
+class SafetyDataCreate(BaseModel):
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    crime_score: float = Field(..., ge=0, le=100)
+    traffic_score: float = Field(..., ge=0, le=100)
+    road_score: float = Field(..., ge=0, le=100)
+    accident_score: float = Field(..., ge=0, le=100)
+    source: str | None = None
+
 ALLOWED_SERVICE_TYPES = {
     "hospital",
     "police",
@@ -58,6 +65,76 @@ class SOSRequest(BaseModel):
     latitude: float
     longitude: float
     message: str | None = None
+
+class RouteHistoryCreate(BaseModel):
+    current_latitude: float = Field(..., ge=-90, le=90)
+    current_longitude: float = Field(..., ge=-180, le=180)
+
+    destination_latitude: float = Field(..., ge=-90, le=90)
+    destination_longitude: float = Field(..., ge=-180, le=180)
+
+    selected_route: str | None = None
+    safety_score: float | None = Field(None, ge=0, le=100)
+
+@app.post("/route-history")
+def save_route_history(
+    route_data: RouteHistoryCreate,
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        history = RouteHistory(
+            user_id=int(current_user),
+            current_latitude=route_data.current_latitude,
+            current_longitude=route_data.current_longitude,
+            destination_latitude=route_data.destination_latitude,
+            destination_longitude=route_data.destination_longitude,
+            selected_route=route_data.selected_route,
+            safety_score=route_data.safety_score
+        )
+
+        db.add(history)
+        db.commit()
+        db.refresh(history)
+
+        return {
+            "message": "Route history saved successfully",
+            "id": history.id
+        }
+
+    finally:
+        db.close()
+
+@app.get("/route-history")
+def get_route_history(
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        history = (
+            db.query(RouteHistory)
+            .filter(RouteHistory.user_id == int(current_user))
+            .order_by(RouteHistory.id.desc())
+            .all()
+        )
+
+        return [
+            {
+                "id": item.id,
+                "current_latitude": item.current_latitude,
+                "current_longitude": item.current_longitude,
+                "destination_latitude": item.destination_latitude,
+                "destination_longitude": item.destination_longitude,
+                "selected_route": item.selected_route,
+                "safety_score": item.safety_score
+            }
+            for item in history
+        ]
+
+    finally:
+        db.close()
 
 def get_weather_score(latitude: float, longitude: float):
     api_key = os.getenv("OPENWEATHER_API_KEY")
@@ -151,6 +228,115 @@ def get_safety_data(latitude, longitude):
 
     finally:
         db.close()
+
+def decode_polyline(polyline):
+    coordinates = []
+    index = 0
+    lat = 0
+    lon = 0
+
+    while index < len(polyline):
+        result = 1
+        shift = 0
+
+        while True:
+            b = ord(polyline[index]) - 63
+            index += 1
+            result += (b & 0x1f) << shift
+            shift += 5
+
+            if b < 0x20:
+                break
+
+        dlat = ~(result >> 1) if result & 1 else result >> 1
+        lat += dlat
+
+        result = 1
+        shift = 0
+
+        while True:
+            b = ord(polyline[index]) - 63
+            index += 1
+            result += (b & 0x1f) << shift
+            shift += 5
+
+            if b < 0x20:
+                break
+
+        dlng = ~(result >> 1) if result & 1 else result >> 1
+        lon += dlng
+
+        coordinates.append([
+            lon / 100000,
+            lat / 100000
+        ])
+
+    return coordinates
+
+def get_route_safety_data(route_coordinates):
+    safety_points = []
+
+    db = Session()
+
+    try:
+        safety_data = db.query(SafetyData).all()
+
+        if not safety_data:
+            return None
+
+        for coordinate in route_coordinates:
+            longitude = coordinate[0]
+            latitude = coordinate[1]
+
+            nearest = min(
+                safety_data,
+                key=lambda data: (
+                    (data.latitude - latitude) ** 2
+                    + (data.longitude - longitude) ** 2
+                )
+            )
+
+            safety_points.append({
+                "crime_score": nearest.crime_score,
+                "traffic_score": nearest.traffic_score,
+                "road_score": nearest.road_score,
+                "accident_score": nearest.accident_score
+            })
+
+        return safety_points
+
+    finally:
+        db.close()
+
+def calculate_route_safety_factors(route_safety_data):
+    if not route_safety_data:
+        return None
+
+    factors = [
+        "crime_score",
+        "traffic_score",
+        "road_score",
+        "accident_score"
+    ]
+
+    route_factors = {}
+
+    for factor in factors:
+        values = [
+            data[factor]
+            for data in route_safety_data
+            if data.get(factor) is not None
+        ]
+
+        if values:
+            route_factors[factor] = round(
+                sum(values) / len(values),
+                2
+            )
+        else:
+            route_factors[factor] = None
+
+    return route_factors
 
 def calculate_distance_km(lat1, lon1, lat2, lon2):
     lat_diff = lat2 - lat1
@@ -434,6 +620,82 @@ def get_users():
 
     return result
 
+@app.post("/safety-data")
+def add_safety_data(data: SafetyDataCreate):
+
+    db = Session()
+
+    try:
+        safety_data = SafetyData(
+            latitude=data.latitude,
+            longitude=data.longitude,
+            crime_score=data.crime_score,
+            traffic_score=data.traffic_score,
+            road_score=data.road_score,
+            accident_score=data.accident_score,
+            source=data.source
+        )
+
+        db.add(safety_data)
+        db.commit()
+        db.refresh(safety_data)
+
+        return {
+            "message": "Safety data added successfully",
+            "id": safety_data.id
+        }
+
+    finally:
+        db.close()
+
+@app.post("/safety-data/import-csv")
+def import_safety_data_csv(
+    file: UploadFile = File(...)
+):
+    import csv
+    import io
+
+    db = Session()
+
+    try:
+        contents = file.file.read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(contents))
+
+        imported_count = 0
+        errors = []
+
+        for row_number, row in enumerate(reader, start=2):
+            try:
+                safety_data = SafetyData(
+                    latitude=float(row["latitude"]),
+                    longitude=float(row["longitude"]),
+                    crime_score=float(row["crime_score"]),
+                    traffic_score=float(row["traffic_score"]),
+                    road_score=float(row["road_score"]),
+                    accident_score=float(row["accident_score"]),
+                    source=row.get("source")
+                )
+
+                db.add(safety_data)
+                imported_count += 1
+
+            except Exception as e:
+                errors.append({
+                    "row": row_number,
+                    "error": str(e)
+                })
+
+        db.commit()
+
+        return {
+            "message": "CSV safety data imported successfully",
+            "imported_count": imported_count,
+            "errors": errors
+        }
+
+    finally:
+        db.close()
+
 @app.post("/routes")
 def get_routes(route_data: RouteRequest):
 
@@ -508,13 +770,23 @@ def get_routes(route_data: RouteRequest):
         if "summary" not in route:
             continue
 
-        safety_factors = get_safety_data(
-            route_data.current_latitude,
-            route_data.current_longitude
-        )
+        route_coordinates = decode_polyline(route["geometry"])
+
+        route_safety_data = get_route_safety_data(route_coordinates)
+
+        if route_safety_data:
+            safety_factors = calculate_route_safety_factors(
+                route_safety_data
+            )
+        else:
+            safety_factors = get_safety_data(
+                route_data.current_latitude,
+                route_data.current_longitude
+            )
 
         if safety_factors is None:
             safety_factors = get_route_safety_factors(index)
+
 
         safety_factors["weather_score"] = weather_score
 
@@ -543,38 +815,11 @@ def get_routes(route_data: RouteRequest):
             "geometry": route["geometry"]
         })
 
-        if safety_factors is None:
-            safety_factors = get_route_safety_factors(index)
-
-        safety_factors["weather_score"] = weather_score
-        safety_score = calculate_safety_score(
-            crime_score=safety_factors["crime_score"],
-            traffic_score=safety_factors["traffic_score"],
-            weather_score=safety_factors["weather_score"],
-            road_score=safety_factors["road_score"],
-            accident_score=safety_factors["accident_score"]
-        )
-
-        risk_level = get_risk_level(safety_score)
-
-        routes.append({
-            "route_id": index,
-            "distance_km": round(
-                route["summary"]["distance"] / 1000, 2
-            ),
-            "duration_minutes": round(
-                route["summary"]["duration"] / 60
-            ),
-            "safety_score": safety_score,
-            "risk_level": risk_level,
-            "safety_factors": safety_factors,
-            "weather_info": weather_info,
-            "geometry": route["geometry"]
-       })
 
     route_options = select_route_options(scored_routes)
 
     return {
+        "route_count": len(scored_routes),
         "routes": scored_routes,
         "recommended_routes": route_options
     }

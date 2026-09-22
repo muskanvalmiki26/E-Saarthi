@@ -46,6 +46,21 @@ class SOSRecord(Base):
     message = Column(String, nullable=True)
     status = Column(String, default="active")
 
+class RouteHistory(Base):
+    __tablename__ = "route_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+
+    current_latitude = Column(Float, nullable=False)
+    current_longitude = Column(Float, nullable=False)
+
+    destination_latitude = Column(Float, nullable=False)
+    destination_longitude = Column(Float, nullable=False)
+
+    selected_route = Column(String, nullable=True)
+    safety_score = Column(Float, nullable=True)
+
 class SafetyData(Base):
     __tablename__ = "safety_data"
 

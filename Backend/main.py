@@ -14,7 +14,13 @@ import math
 
 from dotenv import load_dotenv
 
-from safety import get_risk_level, calculate_safety_score, select_route_options
+from safety import (
+    get_risk_level,
+    calculate_safety_score,
+    select_route_options,
+    validate_ml_safety_output,
+    process_ml_prediction
+)
 
 load_dotenv()
 
@@ -35,6 +41,11 @@ class RouteRequest(BaseModel):
     destination_latitude: float = Field(..., ge=-90, le=90)
     destination_longitude: float = Field(..., ge=-180, le=180)
 
+    crime_score: float | None = Field(default=None, ge=0, le=100)
+    traffic_score: float | None = Field(default=None, ge=0, le=100)
+    road_score: float | None = Field(default=None, ge=0, le=100)
+    accident_score: float | None = Field(default=None, ge=0, le=100)
+
 class EmergencyContactCreate(BaseModel):
     name: str
     phone: str
@@ -53,7 +64,8 @@ ALLOWED_SERVICE_TYPES = {
     "hospital",
     "police",
     "fire_station",
-    "pharmacy"
+    "pharmacy",
+    "ambulance"
 }
 
 class EmergencyServiceRequest(BaseModel):
@@ -350,14 +362,26 @@ def calculate_distance_km(lat1, lon1, lat2, lon2):
 
 def get_nearby_emergency_services(latitude, longitude, service_type):
 
-    query = f"""
-    [out:json];
-    (
-      node["amenity"="{service_type}"](around:5000,{latitude},{longitude});
-      way["amenity"="{service_type}"](around:5000,{latitude},{longitude});
-    );
-    out center;
-    """
+    if service_type == "ambulance":
+        query = f"""
+        [out:json];
+        (
+          node["amenity"="hospital"](around:5000,{latitude},{longitude});
+          way["amenity"="hospital"](around:5000,{latitude},{longitude});
+          node["emergency"="ambulance_station"](around:5000,{latitude},{longitude});
+          way["emergency"="ambulance_station"](around:5000,{latitude},{longitude});
+        );
+        out center;
+        """
+    else:
+        query = f"""
+        [out:json];
+        (
+          node["amenity"="{service_type}"](around:5000,{latitude},{longitude});
+          way["amenity"="{service_type}"](around:5000,{latitude},{longitude});
+        );
+        out center;
+        """
 
     headers = {
         "User-Agent": "eSaarthi/1.0 (Thakur College Data Science Project)",
@@ -365,16 +389,20 @@ def get_nearby_emergency_services(latitude, longitude, service_type):
         "Content-Type": "text/plain"
     }
 
-    response = requests.post(
-        "https://overpass-api.de/api/interpreter",
-        data=query,
-        headers=headers,
-        timeout=30
-    )
+    try:
+        response = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data=query,
+            headers=headers,
+            timeout=30
+        )
 
-    response.raise_for_status()
+        response.raise_for_status()
 
-    data = response.json()
+        data = response.json()
+
+    except requests.RequestException:
+        return []
 
     services = []
 
@@ -392,7 +420,6 @@ def get_nearby_emergency_services(latitude, longitude, service_type):
         if service_lat is None or service_lon is None:
             continue
 
-        # Calculate approximate distance from user's location
         lat_diff = service_lat - latitude
         lon_diff = service_lon - longitude
 
@@ -400,22 +427,25 @@ def get_nearby_emergency_services(latitude, longitude, service_type):
             lat_diff ** 2 + lon_diff ** 2
         ) * 111
 
+        if service_type == "ambulance":
+            result_service_type = "ambulance"
+        else:
+            result_service_type = service_type
+
         services.append({
             "name": tags.get("name", "Unnamed"),
             "latitude": service_lat,
             "longitude": service_lon,
-            "service_type": service_type,
+            "service_type": result_service_type,
             "phone": tags.get("phone"),
             "distance_km": round(distance, 2)
         })
 
-    # Nearest service first
     services.sort(key=lambda service: service["distance_km"])
 
     services = services[:10]
 
     return services
-
 @app.post("/emergency-services")
 def emergency_services(service_request: EmergencyServiceRequest):
 
@@ -454,6 +484,21 @@ def create_sos(
     db.add(sos)
     db.commit()
     db.refresh(sos)
+
+    contacts = db.query(EmergencyContact).filter(
+        EmergencyContact.user_id == int(user_id)
+    ).all()
+
+    emergency_contacts = []
+
+    for contact in contacts:
+        emergency_contacts.append({
+            "id": contact.id,
+            "name": contact.name,
+            "phone": contact.phone,
+            "relation": contact.relation
+        })
+
     db.close()
 
     return {
@@ -462,7 +507,8 @@ def create_sos(
         "user_id": int(user_id),
         "latitude": sos.latitude,
         "longitude": sos.longitude,
-        "status": sos.status
+        "status": sos.status,
+        "emergency_contacts": emergency_contacts
     }
 
 @app.get("/sos")
@@ -774,15 +820,31 @@ def get_routes(route_data: RouteRequest):
 
         route_safety_data = get_route_safety_data(route_coordinates)
 
-        if route_safety_data:
+        if (
+            route_data.crime_score is not None
+            and route_data.traffic_score is not None
+            and route_data.road_score is not None
+            and route_data.accident_score is not None
+        ):
+            ml_output = {
+                "crime_score": route_data.crime_score,
+                "traffic_score": route_data.traffic_score,
+                "road_score": route_data.road_score,
+                "accident_score": route_data.accident_score
+            }
+
+            safety_factors = process_ml_prediction(ml_output)
+
+        elif route_safety_data:
             safety_factors = calculate_route_safety_factors(
-                route_safety_data
+            route_safety_data
             )
+
         else:
             safety_factors = get_safety_data(
-                route_data.current_latitude,
-                route_data.current_longitude
-            )
+            route_data.current_latitude,
+            route_data.current_longitude
+        )
 
         if safety_factors is None:
             safety_factors = get_route_safety_factors(index)
@@ -951,11 +1013,13 @@ def get_sos_contacts(
     }
 
 class DeviationRequest(BaseModel):
-    current_latitude: float
-    current_longitude: float
-    route_latitude: float
-    route_longitude: float
-    threshold_km: float = 0.2
+    current_latitude: float = Field(..., ge=-90, le=90)
+    current_longitude: float = Field(..., ge=-180, le=180)
+
+    route_latitude: float = Field(..., ge=-90, le=90)
+    route_longitude: float = Field(..., ge=-180, le=180)
+
+    threshold_km: float = Field(default=0.2, ge=0)
 
 class RouteProgressRequest(BaseModel):
     current_latitude: float = Field(..., ge=-90, le=90)
@@ -1048,10 +1112,11 @@ def route_progress(data: RouteProgressRequest):
     }
 
 class RerouteRequest(BaseModel):
-    current_latitude: float
-    current_longitude: float
-    destination_latitude: float
-    destination_longitude: float
+    current_latitude: float = Field(..., ge=-90, le=90)
+    current_longitude: float = Field(..., ge=-180, le=180)
+
+    destination_latitude: float = Field(..., ge=-90, le=90)
+    destination_longitude: float = Field(..., ge=-180, le=180)
 
 @app.post("/reroute")
 def reroute(route_data: RerouteRequest):
@@ -1107,17 +1172,76 @@ def reroute(route_data: RerouteRequest):
             "message": "Routing service returned an error. Please check the route details and try again."
         }
 
-    result = response.json()
+    try:
+        result = response.json()
+    except ValueError:
+        return {
+            "error": "Invalid routing response",
+            "message": "The routing service returned an unexpected response."
+        }
 
-    route = result["routes"][0]
+    routes = result.get("routes", [])
+
+    if not routes:
+        return {
+            "error": "No route found",
+            "message": "Unable to generate a new route."
+        }
+
+    route = routes[0]
+
+    route_coordinates = decode_polyline(route["geometry"])
+
+    route_safety_data = get_route_safety_data(route_coordinates)
+
+    if route_safety_data:
+        safety_factors = calculate_route_safety_factors(
+            route_safety_data
+        )
+    else:
+        safety_factors = get_safety_data(
+            route_data.current_latitude,
+            route_data.current_longitude
+        )
+
+    if safety_factors is None:
+        safety_factors = get_route_safety_factors(1)
+
+    weather_score, weather_info = get_weather_score(
+        route_data.destination_latitude,
+        route_data.destination_longitude
+    )
+
+    safety_factors["weather_score"] = weather_score
+
+    safety_score = calculate_safety_score(
+        crime_score=safety_factors["crime_score"],
+        traffic_score=safety_factors["traffic_score"],
+        weather_score=safety_factors["weather_score"],
+        road_score=safety_factors["road_score"],
+        accident_score=safety_factors["accident_score"]
+    )
+
+    risk_level = get_risk_level(safety_score)
 
     return {
         "message": "New route generated successfully",
+
         "distance_km": round(
             route["summary"]["distance"] / 1000, 2
         ),
+
         "duration_minutes": round(
             route["summary"]["duration"] / 60
         ),
+
+        "safety_score": safety_score,
+
+        "risk_level": risk_level,
+
+        "safety_factors": safety_factors,
+
+        "weather_info": weather_info,
+
         "geometry": route["geometry"]
     }

@@ -78,6 +78,10 @@ class SOSRequest(BaseModel):
     longitude: float
     message: str | None = None
 
+class ProfileUpdate(BaseModel):
+    name: str
+    email: str
+
 class RouteHistoryCreate(BaseModel):
     current_latitude: float = Field(..., ge=-90, le=90)
     current_longitude: float = Field(..., ge=-180, le=180)
@@ -144,6 +148,40 @@ def get_route_history(
             }
             for item in history
         ]
+
+    finally:
+        db.close()
+
+@app.delete("/route-history/{history_id}")
+def delete_route_history(
+    history_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        history = (
+            db.query(RouteHistory)
+            .filter(
+                RouteHistory.id == history_id,
+                RouteHistory.user_id == int(current_user)
+            )
+            .first()
+        )
+
+        if not history:
+            raise HTTPException(
+                status_code=404,
+                detail="Route history not found"
+            )
+
+        db.delete(history)
+        db.commit()
+
+        return {
+            "message": "Route history deleted successfully",
+            "history_id": history_id
+        }
 
     finally:
         db.close()
@@ -360,6 +398,33 @@ def calculate_distance_km(lat1, lon1, lat2, lon2):
 
     return round(distance, 3)
 
+def get_weather_hazard_level(weather_data):
+    if not weather_data:
+        return {
+            "hazard_level": "Unknown",
+            "hazard_reason": "Weather data unavailable"
+        }
+
+    condition = str(weather_data.get("condition", "")).lower()
+    rain = float(weather_data.get("rain_1h_mm", 0) or 0)
+    visibility = float(weather_data.get("visibility_m", 10000) or 10000)
+
+    if rain >= 7 or visibility < 1000:
+        level = "High"
+    elif rain >= 2 or visibility < 3000 or condition in {
+        "thunderstorm",
+        "heavy rain",
+        "fog"
+    }:
+        level = "Medium"
+    else:
+        level = "Low"
+
+    return {
+        "hazard_level": level,
+        "hazard_reason": f"Condition: {condition}, Rain: {rain} mm/h, Visibility: {visibility} m"
+    }
+
 def get_nearby_emergency_services(latitude, longitude, service_type):
 
     if service_type == "ambulance":
@@ -566,6 +631,94 @@ def resolve_sos(
         "sos_id": sos.id,
         "status": sos.status
     }
+
+@app.get("/sos-history")
+def get_sos_history(
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        history = (
+            db.query(SOSRecord)
+            .filter(SOSRecord.user_id == int(current_user))
+            .order_by(SOSRecord.id.desc())
+            .all()
+        )
+
+        return [
+            {
+                "sos_id": item.id,
+                "latitude": item.latitude,
+                "longitude": item.longitude,
+                "message": item.message,
+                "status": item.status
+            }
+            for item in history
+        ]
+
+    finally:
+        db.close()
+
+@app.get("/profile")
+def get_profile(
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        user = db.query(User).filter(
+            User.id == int(current_user)
+        ).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        return {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
+
+    finally:
+        db.close()
+
+@app.put("/profile")
+def update_profile(
+    profile_data: ProfileUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        user = db.query(User).filter(
+            User.id == int(current_user)
+        ).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        user.name = profile_data.name
+        user.email = profile_data.email
+
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "message": "Profile updated successfully",
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
+
+    finally:
+        db.close()
 
 def get_route_safety_factors(route_id):
     """
@@ -810,6 +963,8 @@ def get_routes(route_data: RouteRequest):
         route_data.destination_longitude
     )
 
+    weather_hazard = get_weather_hazard_level(weather_info)
+
     scored_routes = []
 
     for index, route in enumerate(routes, start=1):
@@ -874,6 +1029,7 @@ def get_routes(route_data: RouteRequest):
             "risk_level": risk_level,
             "safety_factors": safety_factors,
             "weather_info": weather_info,
+            "weather_hazard": weather_hazard,
             "geometry": route["geometry"]
         })
 
@@ -969,6 +1125,82 @@ def get_emergency_contacts(
     db.close()
 
     return result
+
+@app.put("/emergency-contact/{contact_id}")
+def update_emergency_contact(
+    contact_id: int,
+    contact_data: EmergencyContactCreate,
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        contact = (
+            db.query(EmergencyContact)
+            .filter(
+                EmergencyContact.id == contact_id,
+                EmergencyContact.user_id == int(current_user)
+            )
+            .first()
+        )
+
+        if not contact:
+            raise HTTPException(
+                status_code=404,
+                detail="Emergency contact not found"
+            )
+
+        contact.name = contact_data.name
+        contact.phone = contact_data.phone
+        contact.relation = contact_data.relation
+
+        db.commit()
+        db.refresh(contact)
+
+        return {
+            "message": "Emergency contact updated successfully",
+            "contact_id": contact.id,
+            "name": contact.name,
+            "phone": contact.phone,
+            "relation": contact.relation
+        }
+
+    finally:
+        db.close()
+
+@app.delete("/emergency-contact/{contact_id}")
+def delete_emergency_contact(
+    contact_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        contact = (
+            db.query(EmergencyContact)
+            .filter(
+                EmergencyContact.id == contact_id,
+                EmergencyContact.user_id == int(current_user)
+            )
+            .first()
+        )
+
+        if not contact:
+            raise HTTPException(
+                status_code=404,
+                detail="Emergency contact not found"
+            )
+
+        db.delete(contact)
+        db.commit()
+
+        return {
+            "message": "Emergency contact deleted successfully",
+            "contact_id": contact_id
+        }
+
+    finally:
+        db.close()
 
 @app.get("/sos/{sos_id}/contacts")
 def get_sos_contacts(
@@ -1212,6 +1444,8 @@ def reroute(route_data: RerouteRequest):
         route_data.destination_longitude
     )
 
+    weather_hazard = get_weather_hazard_level(weather_info)
+
     safety_factors["weather_score"] = weather_score
 
     safety_score = calculate_safety_score(
@@ -1242,6 +1476,8 @@ def reroute(route_data: RerouteRequest):
         "safety_factors": safety_factors,
 
         "weather_info": weather_info,
+
+        "weather_hazard": weather_hazard,
 
         "geometry": route["geometry"]
     }

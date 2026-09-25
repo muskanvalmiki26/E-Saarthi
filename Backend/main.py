@@ -82,6 +82,17 @@ class ProfileUpdate(BaseModel):
     name: str
     email: str
 
+class RouteSelectionRequest(BaseModel):
+    route_id: int = Field(..., ge=1)
+
+    current_latitude: float = Field(..., ge=-90, le=90)
+    current_longitude: float = Field(..., ge=-180, le=180)
+
+    destination_latitude: float = Field(..., ge=-90, le=90)
+    destination_longitude: float = Field(..., ge=-180, le=180)
+
+    safety_score: float | None = Field(None, ge=0, le=100)
+
 class RouteHistoryCreate(BaseModel):
     current_latitude: float = Field(..., ge=-90, le=90)
     current_longitude: float = Field(..., ge=-180, le=180)
@@ -1041,7 +1052,40 @@ def get_routes(route_data: RouteRequest):
         "routes": scored_routes,
         "recommended_routes": route_options
     }
-    
+
+@app.post("/select-route")
+def select_route(
+    selection_data: RouteSelectionRequest,
+    current_user: User = Depends(get_current_user)
+):
+    db = Session()
+
+    try:
+        history = RouteHistory(
+            user_id=int(current_user),
+            current_latitude=selection_data.current_latitude,
+            current_longitude=selection_data.current_longitude,
+            destination_latitude=selection_data.destination_latitude,
+            destination_longitude=selection_data.destination_longitude,
+            selected_route=str(selection_data.route_id),
+            safety_score=selection_data.safety_score
+        )
+
+        db.add(history)
+        db.commit()
+        db.refresh(history)
+
+        return {
+            "message": "Route selected and saved successfully",
+            "user_id": int(current_user),
+            "selected_route_id": selection_data.route_id,
+            "safety_score": history.safety_score,
+            "history_id": history.id
+        }
+
+    finally:
+        db.close()
+
 @app.get("/profile")
 def profile(user_id: str = Depends(get_current_user)):
     return {

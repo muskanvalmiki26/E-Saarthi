@@ -1,0 +1,10 @@
+id,latitude,longitude,road_type,road_name,severity,status,state,district,road_score,first_reported,last_reported,url
+1,12.987959,77.697255,city_road,Unknown,2,open,Unknown,Unknown,33.33,2026-09-27T13:17:49.000Z,2026-09-27T13:18:30.000Z,https://kamartod.in/pothole.html?id=1
+2,12.944594,77.680272,city_road,Unknown,2,open,Unknown,Unknown,33.33,2026-09-30T12:08:45.000Z,2026-09-30T12:08:45.000Z,https://kamartod.in/pothole.html?id=2
+3,12.947471,77.680687,city_road,Unknown,3,open,Unknown,Unknown,0.0,2026-09-30T12:10:06.000Z,2026-09-30T12:10:06.000Z,https://kamartod.in/pothole.html?id=3
+4,12.947533,77.680691,city_road,Unknown,2,open,Unknown,Unknown,33.33,2026-09-30T12:10:38.000Z,2026-09-30T12:10:38.000Z,https://kamartod.in/pothole.html?id=4
+5,12.948725,77.684794,city_road,Unknown,1,open,Unknown,Unknown,66.67,2026-09-30T12:11:01.000Z,2026-09-30T12:11:01.000Z,https://kamartod.in/pothole.html?id=5
+6,12.954136,77.689282,city_road,Unknown,3,open,Unknown,Unknown,0.0,2026-09-30T12:17:46.000Z,2026-09-30T12:17:46.000Z,https://kamartod.in/pothole.html?id=6
+7,12.97296,77.693584,local_street,Unknown,2,open,Unknown,Unknown,33.33,2026-09-30T12:38:22.000Z,2026-09-30T12:38:22.000Z,https://kamartod.in/pothole.html?id=7
+8,12.972989,77.694038,local_street,Unknown,3,open,Unknown,Unknown,0.0,2026-09-30T12:41:34.000Z,2026-09-30T12:41:34.000Z,https://kamartod.in/pothole.html?id=8
+9,12.980571,77.694989,city_road,Unknown,2,open,Unknown,Unknown,33.33,2026-09-30T13:00:27.000Z,2026-09-30T13:00:27.000Z,https://kamartod.in/pothole.html?id=9

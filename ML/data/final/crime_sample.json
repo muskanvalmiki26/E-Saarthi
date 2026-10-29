@@ -1,0 +1,92 @@
+[
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"CHITTOOR",
+    "latitude":13.4649382208,
+    "longitude":79.0059413723,
+    "total_crimes":163294,
+    "crime_score":89.32,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"CUDDAPAH",
+    "latitude":14.4637521719,
+    "longitude":78.7803742,
+    "total_crimes":121775,
+    "crime_score":92.04,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"EAST GODAVARI",
+    "latitude":17.271478929,
+    "longitude":81.8940735252,
+    "total_crimes":201198,
+    "crime_score":86.85,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"GUNTUR",
+    "latitude":16.2931057705,
+    "longitude":80.0788328221,
+    "total_crimes":208842,
+    "crime_score":86.35,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"KRISHNA",
+    "latitude":16.5557073207,
+    "longitude":80.7979936723,
+    "total_crimes":143870,
+    "crime_score":90.59,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"KURNOOL",
+    "latitude":15.5319597064,
+    "longitude":77.9993737668,
+    "total_crimes":153891,
+    "crime_score":89.94,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"NELLORE",
+    "latitude":14.4183576613,
+    "longitude":79.7389367175,
+    "total_crimes":152948,
+    "crime_score":90.0,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"SRIKAKULAM",
+    "latitude":18.5986702204,
+    "longitude":84.0238470236,
+    "total_crimes":83657,
+    "crime_score":94.53,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"VIZIANAGARAM",
+    "latitude":18.4733895682,
+    "longitude":83.3846206815,
+    "total_crimes":78510,
+    "crime_score":94.87,
+    "coordinate_source":"Esri India district boundary centroid"
+  },
+  {
+    "STATE\/UT":"ANDHRA PRADESH",
+    "DISTRICT":"WEST GODAVARI",
+    "latitude":16.9314010716,
+    "longitude":81.3873602487,
+    "total_crimes":196091,
+    "crime_score":87.18,
+    "coordinate_source":"Esri India district boundary centroid"
+  }
+]

@@ -1,42 +1,53 @@
 def get_risk_level(safety_score: float):
     if safety_score >= 80:
         return "Low"
-    elif safety_score >= 60:
+    elif safety_score >= 50:
         return "Medium"
-    else:
+    else: 
         return "High"
 
 
+
 def calculate_safety_score(
-    crime_score: float,
-    traffic_score: float,
-    weather_score: float,
-    road_score: float,
-    accident_score: float
+    crime_score=None,
+    traffic_score=None,
+    weather_score=None,
+    road_score=None,
+    accident_score=None
 ):
-    scores = [
-        crime_score,
-        traffic_score,
-        weather_score,
-        road_score,
-        accident_score
-    ]
+    weights = {
+        "crime_score": 0.30,
+        "traffic_score": 0.20,
+        "weather_score": 0.15,
+        "road_score": 0.20,
+        "accident_score": 0.15
+    }
 
-    scores = [
-        max(0, min(100, score))
-        for score in scores
-    ]
+    scores = {
+        "crime_score": crime_score,
+        "traffic_score": traffic_score,
+        "weather_score": weather_score,
+        "road_score": road_score,
+        "accident_score": accident_score
+    }
 
-    crime_score, traffic_score, weather_score, road_score, accident_score = scores
+    available = {
+        key: max(0, min(100, value))
+        for key, value in scores.items()
+        if value is not None
+    }
 
-    score = (
-        crime_score * 0.30 +
-        traffic_score * 0.20 +
-        weather_score * 0.15 +
-        road_score * 0.20 +
-        accident_score * 0.15
-    )
-    return round(max(0, min(100, score)), 2)
+    if not available:
+        return None
+
+    total_weight = sum(weights[key] for key in available)
+
+    safety_score = sum(
+        available[key] * weights[key]
+        for key in available
+    ) / total_weight
+
+    return round(max(0, min(100, safety_score)), 2)
 
 def select_route_options(routes):
     if not routes:
@@ -46,21 +57,29 @@ def select_route_options(routes):
             "fastest": None
         }
 
+    # Safest: highest safety score
     safest = max(
         routes,
-        key=lambda r: r["safety_score"]
+        key=lambda r: (
+            r["safety_score"],
+            -r["duration_seconds"]
+        )
     )
 
+    # Fastest: minimum exact travel time
     fastest = min(
         routes,
-        key=lambda r: r["duration_minutes"]
+        key=lambda r: (
+            r["duration_seconds"],
+            -r["safety_score"]
+        )
     )
 
     min_duration = min(
-        r["duration_minutes"] for r in routes
+        r["duration_seconds"] for r in routes
     )
     max_duration = max(
-        r["duration_minutes"] for r in routes
+        r["duration_seconds"] for r in routes
     )
 
     for route in routes:
@@ -68,19 +87,23 @@ def select_route_options(routes):
             time_score = 100
         else:
             time_score = (
-                (max_duration - route["duration_minutes"])
+                (max_duration - route["duration_seconds"])
                 / (max_duration - min_duration)
             ) * 100
 
         route["balanced_score"] = round(
-            route["safety_score"] * 0.6
-            + time_score * 0.4,
+            route["safety_score"] * 0.6 + time_score * 0.4,
             2
         )
 
+    # Balanced: 60% safety + 40% travel time
     balanced = max(
         routes,
-        key=lambda r: r["balanced_score"]
+        key=lambda r: (
+            r["balanced_score"],
+            r["safety_score"],
+            -r["duration_seconds"]
+        )
     )
 
     return {

@@ -2,6 +2,8 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 
 from pydantic import BaseModel, Field
 
+from fastapi.middleware.cors import CORSMiddleware
+
 import os
 
 import requests
@@ -11,6 +13,14 @@ from database import engine, Base, User, Session, EmergencyContact, SafetyData, 
 from security import hash_password, verify_password, create_access_token, get_current_user
 
 import math
+
+from ml_data import (
+    get_nearest_crime_score,
+    get_nearest_traffic_score,
+    get_nearest_road_score,
+    get_nearest_accident_score,
+    get_route_average_score,
+)
 
 from dotenv import load_dotenv
 
@@ -24,7 +34,17 @@ from safety import (
 
 load_dotenv()
 
+GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
+
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class UserCreate(BaseModel):
     name: str
@@ -74,8 +94,8 @@ class EmergencyServiceRequest(BaseModel):
     service_type: str
 
 class SOSRequest(BaseModel):
-    latitude: float
-    longitude: float
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
     message: str | None = None
 
 class ProfileUpdate(BaseModel):
@@ -263,6 +283,7 @@ def get_weather_score(latitude: float, longitude: float):
     except Exception:
         return 70, {"status": "Weather service error"}
 
+
 def get_safety_data(latitude, longitude):
     db = Session()
 
@@ -274,11 +295,24 @@ def get_safety_data(latitude, longitude):
 
         nearest = min(
             safety_data,
-            key=lambda data: (
-                (data.latitude - latitude) ** 2
-                + (data.longitude - longitude) ** 2
+            key=lambda data: calculate_distance_km(
+                latitude,
+                longitude,
+                data.latitude,
+                data.longitude
             )
         )
+
+        distance = calculate_distance_km(
+            latitude,
+            longitude,
+            nearest.latitude,
+            nearest.longitude
+        )
+
+        # Ignore unrelated safety records
+        if distance > 5:
+            return None
 
         return {
             "crime_score": nearest.crime_score,
@@ -297,13 +331,13 @@ def decode_polyline(polyline):
     lon = 0
 
     while index < len(polyline):
-        result = 1
+        result = 0
         shift = 0
 
         while True:
             b = ord(polyline[index]) - 63
             index += 1
-            result += (b & 0x1f) << shift
+            result |= (b & 0x1f) << shift
             shift += 5
 
             if b < 0x20:
@@ -312,13 +346,13 @@ def decode_polyline(polyline):
         dlat = ~(result >> 1) if result & 1 else result >> 1
         lat += dlat
 
-        result = 1
+        result = 0
         shift = 0
 
         while True:
             b = ord(polyline[index]) - 63
             index += 1
-            result += (b & 0x1f) << shift
+            result |= (b & 0x1f) << shift
             shift += 5
 
             if b < 0x20:
@@ -351,11 +385,24 @@ def get_route_safety_data(route_coordinates):
 
             nearest = min(
                 safety_data,
-                key=lambda data: (
-                    (data.latitude - latitude) ** 2
-                    + (data.longitude - longitude) ** 2
+                key=lambda data: calculate_distance_km(
+                    latitude,
+                    longitude,
+                    data.latitude,
+                    data.longitude
                 )
             )
+
+            distance = calculate_distance_km(
+                latitude,
+                longitude,
+                nearest.latitude,
+                nearest.longitude
+            )
+
+            # Ignore database records farther than 5 km
+            if distance > 5:
+                continue
 
             safety_points.append({
                 "crime_score": nearest.crime_score,
@@ -364,7 +411,7 @@ def get_route_safety_data(route_coordinates):
                 "accident_score": nearest.accident_score
             })
 
-        return safety_points
+        return safety_points if safety_points else None
 
     finally:
         db.close()
@@ -399,13 +446,33 @@ def calculate_route_safety_factors(route_safety_data):
 
     return route_factors
 
+
 def calculate_distance_km(lat1, lon1, lat2, lon2):
+    earth_radius_km = 6371
+
+    lat1 = math.radians(lat1)
+    lon1 = math.radians(lon1)
+    lat2 = math.radians(lat2)
+    lon2 = math.radians(lon2)
+
     lat_diff = lat2 - lat1
     lon_diff = lon2 - lon1
 
-    distance = math.sqrt(
-        lat_diff ** 2 + lon_diff ** 2
-    ) * 111
+    a = (
+        math.sin(lat_diff / 2) ** 2
+        + math.cos(lat1)
+        * math.cos(lat2)
+        * math.sin(lon_diff / 2) ** 2
+    )
+
+    a = max(0, min(1, a))
+
+    c = 2 * math.atan2(
+        math.sqrt(a),
+        math.sqrt(1 - a)
+    )
+
+    distance = earth_radius_km * c
 
     return round(distance, 3)
 
@@ -436,100 +503,108 @@ def get_weather_hazard_level(weather_data):
         "hazard_reason": f"Condition: {condition}, Rain: {rain} mm/h, Visibility: {visibility} m"
     }
 
+
 def get_nearby_emergency_services(latitude, longitude, service_type):
 
-    if service_type == "ambulance":
-        query = f"""
-        [out:json];
-        (
-          node["amenity"="hospital"](around:5000,{latitude},{longitude});
-          way["amenity"="hospital"](around:5000,{latitude},{longitude});
-          node["emergency"="ambulance_station"](around:5000,{latitude},{longitude});
-          way["emergency"="ambulance_station"](around:5000,{latitude},{longitude});
-        );
-        out center;
-        """
-    else:
-        query = f"""
-        [out:json];
-        (
-          node["amenity"="{service_type}"](around:5000,{latitude},{longitude});
-          way["amenity"="{service_type}"](around:5000,{latitude},{longitude});
-        );
-        out center;
-        """
+    if not GEOAPIFY_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Geoapify API key not configured"
+        )
 
-    headers = {
-        "User-Agent": "eSaarthi/1.0 (Thakur College Data Science Project)",
-        "Accept": "application/json",
-        "Content-Type": "text/plain"
+    category_map = {
+        "hospital": "healthcare.hospital",
+        "police": "service.police",
+        "fire_station": "service.fire_station",
+        "pharmacy": "healthcare.pharmacy",
+        "ambulance": "emergency.ambulance_station"
+    }
+
+    category = category_map.get(service_type)
+
+    if not category:
+        return []
+
+    params = {
+        "categories": category,
+        "filter": f"circle:{longitude},{latitude},5000",
+        "bias": f"proximity:{longitude},{latitude}",
+        "limit": 20,
+        "apiKey": GEOAPIFY_API_KEY
     }
 
     try:
-        response = requests.post(
-            "https://overpass-api.de/api/interpreter",
-            data=query,
-            headers=headers,
-            timeout=30
+        response = requests.get(
+            "https://api.geoapify.com/v2/places",
+            params=params,
+            timeout=15
         )
 
         response.raise_for_status()
-
+        
         data = response.json()
 
-    except requests.RequestException:
-        return []
+    except requests.RequestException as e:
+        print("Geoapify status:", response.status_code)
+        print("Geoapify error details:", response.text[:1000])
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to fetch nearby emergency services"
+        )
 
     services = []
 
-    for element in data.get("elements", []):
-        tags = element.get("tags", {})
+    for feature in data.get("features", []):
 
-        if element["type"] == "node":
-            service_lat = element.get("lat")
-            service_lon = element.get("lon")
-        else:
-            center = element.get("center", {})
-            service_lat = center.get("lat")
-            service_lon = center.get("lon")
+        properties = feature.get("properties", {})
+        coordinates = feature.get("geometry", {}).get("coordinates", [])
+
+        service_lat = properties.get("lat")
+        service_lon = properties.get("lon")
+
+        if service_lat is None and len(coordinates) >= 2:
+            service_lon, service_lat = coordinates[:2]
 
         if service_lat is None or service_lon is None:
             continue
 
-        lat_diff = service_lat - latitude
-        lon_diff = service_lon - longitude
+        distance = properties.get("distance")
 
-        distance = math.sqrt(
-            lat_diff ** 2 + lon_diff ** 2
-        ) * 111
-
-        if service_type == "ambulance":
-            result_service_type = "ambulance"
+        if distance is not None:
+            distance_km = distance / 1000
         else:
-            result_service_type = service_type
+            distance_km = calculate_distance_km(
+                latitude,
+                longitude,
+                service_lat,
+                service_lon
+            )
 
         services.append({
-            "name": tags.get("name", "Unnamed"),
+            "name": properties.get("name") or properties.get("address_line1") or "Unnamed",
             "latitude": service_lat,
             "longitude": service_lon,
-            "service_type": result_service_type,
-            "phone": tags.get("phone"),
-            "distance_km": round(distance, 2)
+            "service_type": service_type,
+            "phone": properties.get("datasource", {}).get("raw", {}).get("phone"),
+            "distance_km": round(distance_km, 2)
         })
 
     services.sort(key=lambda service: service["distance_km"])
 
-    services = services[:10]
+    return services[:10]
 
-    return services
+
 @app.post("/emergency-services")
 def emergency_services(service_request: EmergencyServiceRequest):
 
     if service_request.service_type not in ALLOWED_SERVICE_TYPES:
-        return {
-            "error": "Invalid service type",
-            "allowed_service_types": list(ALLOWED_SERVICE_TYPES)
-        }
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "Invalid service type",
+                "allowed_service_types": list(ALLOWED_SERVICE_TYPES)
+            }
+        )
 
     services = get_nearby_emergency_services(
         service_request.latitude,
@@ -546,46 +621,49 @@ def emergency_services(service_request: EmergencyServiceRequest):
 def create_sos(
     sos_data: SOSRequest,
     user_id: str = Depends(get_current_user)
+
 ):
     db = Session()
 
-    sos = SOSRecord(
-        user_id=int(user_id),
-        latitude=sos_data.latitude,
-        longitude=sos_data.longitude,
-        message=sos_data.message,
-        status="active"
-    )
+    try:
+        sos = SOSRecord(
+            user_id=int(user_id),
+            latitude=sos_data.latitude,
+            longitude=sos_data.longitude,
+            message=sos_data.message,
+            status="active"
+        )
 
-    db.add(sos)
-    db.commit()
-    db.refresh(sos)
+        db.add(sos)
+        db.commit()
+        db.refresh(sos)
 
-    contacts = db.query(EmergencyContact).filter(
-        EmergencyContact.user_id == int(user_id)
-    ).all()
+        contacts = db.query(EmergencyContact).filter(
+            EmergencyContact.user_id == int(user_id)
+        ).all()
 
-    emergency_contacts = []
+        emergency_contacts = [
+            {
+                "id": contact.id,
+                "name": contact.name,
+                "phone": contact.phone,
+                "relation": contact.relation
+            }
+            for contact in contacts
+        ]
 
-    for contact in contacts:
-        emergency_contacts.append({
-            "id": contact.id,
-            "name": contact.name,
-            "phone": contact.phone,
-            "relation": contact.relation
-        })
+        return {
+            "message": "SOS activated successfully",
+            "sos_id": sos.id,
+            "user_id": int(user_id),
+            "latitude": sos.latitude,
+            "longitude": sos.longitude,
+            "status": sos.status,
+            "emergency_contacts": emergency_contacts
+        }
 
-    db.close()
-
-    return {
-        "message": "SOS activated successfully",
-        "sos_id": sos.id,
-        "user_id": int(user_id),
-        "latitude": sos.latitude,
-        "longitude": sos.longitude,
-        "status": sos.status,
-        "emergency_contacts": emergency_contacts
-    }
+    finally:
+        db.close()
 
 @app.get("/sos")
 def get_sos_records(
@@ -593,27 +671,29 @@ def get_sos_records(
 ):
     db = Session()
 
-    records = db.query(SOSRecord).filter(
-        SOSRecord.user_id == int(user_id)
-    ).order_by(SOSRecord.id.desc()).all()
+    try:
+        records = db.query(SOSRecord).filter(
+            SOSRecord.user_id == int(user_id)
+        ).order_by(SOSRecord.id.desc()).all()
 
-    result = []
+        result = []
 
-    for record in records:
-        result.append({
-            "sos_id": record.id,
-            "latitude": record.latitude,
-            "longitude": record.longitude,
-            "message": record.message,
-            "status": record.status
-        })
+        for record in records:
+            result.append({
+                "sos_id": record.id,
+                "latitude": record.latitude,
+                "longitude": record.longitude,
+                "message": record.message,
+                "status": record.status
+            })
 
-    db.close()
+        return {
+            "count": len(result),
+            "sos_records": result
+        }
 
-    return {
-        "count": len(result),
-        "sos_records": result
-    }
+    finally:
+        db.close()
 
 @app.put("/sos/{sos_id}/resolve")
 def resolve_sos(
@@ -622,26 +702,37 @@ def resolve_sos(
 ):
     db = Session()
 
-    sos = db.query(SOSRecord).filter(
-        SOSRecord.id == sos_id,
-        SOSRecord.user_id == int(user_id)
-    ).first()
+    try:
+        sos = db.query(SOSRecord).filter(
+            SOSRecord.id == sos_id,
+            SOSRecord.user_id == int(user_id)
+        ).first()
 
-    if not sos:
+        if not sos:
+            raise HTTPException(
+                status_code=404,
+                detail="SOS record not found"
+            )
+
+        if sos.status == "resolved":
+            return {
+                "message": "SOS is already resolved",
+                "sos_id": sos.id,
+                "status": sos.status
+            }
+
+        sos.status = "resolved"
+        db.commit()
+        db.refresh(sos)
+
+        return {
+            "message": "SOS resolved successfully",
+            "sos_id": sos.id,
+            "status": sos.status
+        }
+
+    finally:
         db.close()
-        return {"error": "SOS record not found"}
-
-    sos.status = "resolved"
-
-    db.commit()
-    db.refresh(sos)
-    db.close()
-
-    return {
-        "message": "SOS resolved successfully",
-        "sos_id": sos.id,
-        "status": sos.status
-    }
 
 @app.get("/sos-history")
 def get_sos_history(
@@ -713,6 +804,17 @@ def update_profile(
             raise HTTPException(
                 status_code=404,
                 detail="User not found"
+            )
+
+        existing_user = db.query(User).filter(
+            User.email == profile_data.email,
+            User.id != user.id
+        ).first()
+
+        if existing_user:
+            raise HTTPException(
+                status_code=409,
+                detail="Email is already registered"
             )
 
         user.name = profile_data.name
@@ -792,26 +894,38 @@ def test_db():
 @app.post("/create-user")
 def create_user(user_data: UserCreate):
     db = Session()
+    try:
+        existing_user = db.query(User).filter(
+            User.email == user_data.email
+        ).first()
 
-    hashed_password = hash_password(user_data.password)
+        if existing_user:
+            raise HTTPException(
+                status_code=409,
+                detail="Email already registered"
+            )
 
-    user = User(
-    name=user_data.name,
-    email=user_data.email,
-    password=hashed_password
-)
+        hashed_password = hash_password(user_data.password)
 
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    db.close()
+        user = User(
+            name=user_data.name,
+            email=user_data.email,
+            password=hashed_password
+        )
 
-    return {
-        "message": "User created successfully",
-        "user_id": user.id
-    }
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-@app.get("/users")
+        return {
+            "message": "User created successfully",
+            "user_id": user.id
+        }
+
+    finally:
+        db.close()
+
+@app.get("/users", dependencies=[Depends(get_current_user)])
 def get_users():
     db = Session()
 
@@ -830,8 +944,12 @@ def get_users():
 
     return result
 
-@app.post("/safety-data")
-def add_safety_data(data: SafetyDataCreate):
+@app.post("/safety-data",
+    dependencies=[Depends(get_current_user)]
+)
+def add_safety_data(
+    data: SafetyDataCreate
+):
 
     db = Session()
 
@@ -860,7 +978,8 @@ def add_safety_data(data: SafetyDataCreate):
 
 @app.post("/safety-data/import-csv")
 def import_safety_data_csv(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
 ):
     import csv
     import io
@@ -874,15 +993,43 @@ def import_safety_data_csv(
         imported_count = 0
         errors = []
 
+        
         for row_number, row in enumerate(reader, start=2):
             try:
+                latitude = float(row["latitude"])
+                longitude = float(row["longitude"])
+
+                crime_score = float(row["crime_score"])
+                traffic_score = float(row["traffic_score"])
+                road_score = float(row["road_score"])
+                accident_score = float(row["accident_score"])
+
+                if not -90 <= latitude <= 90:
+                    raise ValueError("Latitude must be between -90 and 90")
+
+                if not -180 <= longitude <= 180:
+                    raise ValueError("Longitude must be between -180 and 180")
+
+                scores = {
+                    "crime_score": crime_score,
+                    "traffic_score": traffic_score,
+                    "road_score": road_score,
+                    "accident_score": accident_score
+                }
+
+                for score_name, score_value in scores.items():
+                    if not 0 <= score_value <= 100:
+                        raise ValueError(
+                            f"{score_name} must be between 0 and 100"
+                        )
+
                 safety_data = SafetyData(
-                    latitude=float(row["latitude"]),
-                    longitude=float(row["longitude"]),
-                    crime_score=float(row["crime_score"]),
-                    traffic_score=float(row["traffic_score"]),
-                    road_score=float(row["road_score"]),
-                    accident_score=float(row["accident_score"]),
+                    latitude=latitude,
+                    longitude=longitude,
+                    crime_score=crime_score,
+                    traffic_score=traffic_score,
+                    road_score=road_score,
+                    accident_score=accident_score,
                     source=row.get("source")
                 )
 
@@ -946,6 +1093,9 @@ def get_routes(route_data: RouteRequest):
         json=data
     )
 
+    print("ORS STATUS:", response.status_code)
+    print("ORS RESPONSE:", response.text[:500])
+
     if response.status_code != 200:
         return {
             "error": "Unable to get routes",
@@ -982,6 +1132,7 @@ def get_routes(route_data: RouteRequest):
         if "summary" not in route:
             continue
 
+
         route_coordinates = decode_polyline(route["geometry"])
 
         route_safety_data = get_route_safety_data(route_coordinates)
@@ -1002,19 +1153,56 @@ def get_routes(route_data: RouteRequest):
             safety_factors = process_ml_prediction(ml_output)
 
         elif route_safety_data:
-            safety_factors = calculate_route_safety_factors(
-            route_safety_data
-            )
+            safety_factors = {}
 
         else:
-            safety_factors = get_safety_data(
-            route_data.current_latitude,
-            route_data.current_longitude
-        )
+            safety_factors = {}
+
 
         if safety_factors is None:
-            safety_factors = get_route_safety_factors(index)
+            safety_factors = {}
 
+        safety_factors.setdefault("crime_score", None)
+        safety_factors.setdefault("traffic_score", None) 
+        safety_factors.setdefault("road_score", None)
+        safety_factors.setdefault("accident_score", None)
+        
+        crime_csv_score = get_route_average_score(
+            route_coordinates,
+            get_nearest_crime_score
+        )
+
+        if crime_csv_score is not None:
+          safety_factors["crime_score"] = crime_csv_score
+
+
+        traffic_csv_score = get_route_average_score(
+          route_coordinates,
+          get_nearest_traffic_score
+        )
+
+        if traffic_csv_score is not None:
+          safety_factors["traffic_score"] = traffic_csv_score
+
+
+        road_csv_score = get_route_average_score(
+          route_coordinates,
+          get_nearest_road_score
+        )
+
+        if road_csv_score is not None:
+          safety_factors["road_score"] = road_csv_score
+
+
+        accident_csv_score = get_route_average_score(
+          route_coordinates,
+          get_nearest_accident_score
+        )
+
+        print("ACCIDENT CSV ROUTE SCORE:", accident_csv_score)
+
+        if accident_csv_score is not None:
+          safety_factors["accident_score"] = accident_csv_score
 
         safety_factors["weather_score"] = weather_score
 
@@ -1024,6 +1212,31 @@ def get_routes(route_data: RouteRequest):
             weather_score=safety_factors["weather_score"],
             road_score=safety_factors["road_score"],
             accident_score=safety_factors["accident_score"]
+        )
+        available_factors = [
+          safety_factors.get("crime_score"),
+          safety_factors.get("traffic_score"),
+          safety_factors.get("weather_score"),
+          safety_factors.get("road_score"),
+          safety_factors.get("accident_score")
+        ]
+
+        available_count = sum(
+          score is not None for score in available_factors
+        )
+
+        is_provisional = available_count < 5
+
+        data_coverage = round(
+          sum(
+            weight
+            for score, weight in zip(
+              available_factors,
+              [0.30, 0.20, 0.15, 0.20, 0.15]
+            )
+            if score is not None
+          ) * 100,
+          2
         )
 
         risk_level = get_risk_level(safety_score)
@@ -1036,8 +1249,11 @@ def get_routes(route_data: RouteRequest):
             "duration_minutes": round(
             route["summary"]["duration"] / 60
             ),
+            "duration_seconds": route["summary"]["duration"],
             "safety_score": safety_score,
             "risk_level": risk_level,
+            "provisional": is_provisional,
+            "data_coverage": data_coverage,
             "safety_factors": safety_factors,
             "weather_info": weather_info,
             "weather_hazard": weather_hazard,
@@ -1045,6 +1261,13 @@ def get_routes(route_data: RouteRequest):
         })
 
 
+    for r in scored_routes:
+      print(
+        "ROUTE:", r["route_id"],
+        "SAFETY:", r["safety_score"],
+        "DURATION:", r["duration_seconds"]
+      )    
+    
     route_options = select_route_options(scored_routes)
 
     return {
@@ -1086,41 +1309,45 @@ def select_route(
     finally:
         db.close()
 
-@app.get("/profile")
-def profile(user_id: str = Depends(get_current_user)):
-    return {
-        "message": "Token is valid",
-        "user_id": user_id
-    }
-
 @app.post("/login")
 def login(user_data: UserLogin):
     db = Session()
 
-    user = db.query(User).filter(User.email == user_data.email).first()
+    try:
+        user = db.query(User).filter(
+            User.email == user_data.email
+        ).first()
 
-    if not user:
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+        if not verify_password(
+            user_data.password,
+            user.password
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+        access_token = create_access_token({
+            "sub": str(user.id),
+            "email": user.email
+        })
+
+        return {
+            "message": "Login successful",
+            "access_token": access_token,
+            "user_id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
+
+    finally:
         db.close()
-        return {"error": "Invalid email or password"}
-
-    if not verify_password(user_data.password, user.password):
-        db.close()
-        return {"error": "Invalid email or password"}
-
-    access_token = create_access_token({
-    "sub": str(user.id),
-    "email": user.email
-})
-
-    db.close()
-
-    return {
-        "message": "Login successful",
-        "access_token": access_token,
-        "user_id": user.id,
-        "name": user.name,
-        "email": user.email
-    }
 
 @app.post("/emergency-contacts")
 def add_emergency_contact(
@@ -1246,6 +1473,7 @@ def delete_emergency_contact(
     finally:
         db.close()
 
+
 @app.get("/sos/{sos_id}/contacts")
 def get_sos_contacts(
     sos_id: int,
@@ -1253,40 +1481,44 @@ def get_sos_contacts(
 ):
     db = Session()
 
-    # Check that SOS belongs to logged-in user
-    sos = db.query(SOSRecord).filter(
-        SOSRecord.id == sos_id,
-        SOSRecord.user_id == int(user_id)
-    ).first()
+    try:
+        # Check that SOS belongs to logged-in user
+        sos = db.query(SOSRecord).filter(
+            SOSRecord.id == sos_id,
+            SOSRecord.user_id == int(user_id)
+        ).first()
 
-    if not sos:
+        if not sos:
+            raise HTTPException(
+                status_code=404,
+                detail="SOS record not found"
+            )
+
+        # Get user's emergency contacts
+        contacts = db.query(EmergencyContact).filter(
+            EmergencyContact.user_id == int(user_id)
+        ).all()
+
+        result = []
+
+        for contact in contacts:
+            result.append({
+                "name": contact.name,
+                "phone": contact.phone,
+                "relation": contact.relation
+            })
+
+        return {
+            "sos_id": sos.id,
+            "sos_status": sos.status,
+            "latitude": sos.latitude,
+            "longitude": sos.longitude,
+            "message": sos.message,
+            "emergency_contacts": result
+        }
+
+    finally:
         db.close()
-        return {"error": "SOS record not found"}
-
-    # Get user's emergency contacts
-    contacts = db.query(EmergencyContact).filter(
-        EmergencyContact.user_id == int(user_id)
-    ).all()
-
-    result = []
-
-    for contact in contacts:
-        result.append({
-            "name": contact.name,
-            "phone": contact.phone,
-            "relation": contact.relation
-        })
-
-    db.close()
-
-    return {
-        "sos_id": sos.id,
-        "sos_status": sos.status,
-        "latitude": sos.latitude,
-        "longitude": sos.longitude,
-        "message": sos.message,
-        "emergency_contacts": result
-    }
 
 class DeviationRequest(BaseModel):
     current_latitude: float = Field(..., ge=-90, le=90)
@@ -1337,7 +1569,10 @@ def generate_hazard_alert(latitude, longitude):
     }
 
 @app.post("/hazard-alerts")
-def hazard_alerts(data: HazardAlertRequest):
+def hazard_alerts(
+    data: HazardAlertRequest,
+    current_user: User = Depends(get_current_user)
+):
 
     result = generate_hazard_alert(
         data.latitude,
@@ -1423,6 +1658,7 @@ def reroute(route_data: RerouteRequest):
         "format": "geojson"
     }
 
+    
     try:
         response = requests.post(
             url,
@@ -1430,22 +1666,24 @@ def reroute(route_data: RerouteRequest):
             json=data,
             timeout=30
         )
+
+        if response.status_code != 200:
+            return {
+                "error": "Unable to get routes",
+                "status_code": response.status_code,
+                "details": response.text
+            }
+
     except requests.exceptions.Timeout:
         return {
-            "error": "Routing service timed out",
-            "message": "Unable to get route at the moment. Please try again."
+            "error": "Routing service timeout",
+            "message": "The routing service took too long to respond. Please try again."
         }
+
     except requests.exceptions.RequestException:
         return {
             "error": "Routing service unavailable",
-            "message": "Unable to connect to the routing service."
-        }
-
-    if response.status_code != 200:
-        return {
-            "error": "Unable to get routes",
-            "status_code": response.status_code,
-            "message": "Routing service returned an error. Please check the route details and try again."
+            "message": "Unable to connect to the routing service. Please try again later."
         }
 
     try:
@@ -1466,9 +1704,12 @@ def reroute(route_data: RerouteRequest):
 
     route = routes[0]
 
-    route_coordinates = decode_polyline(route["geometry"])
+    route_coordinates = route["geometry"]["coordinates"]
 
     route_safety_data = get_route_safety_data(route_coordinates)
+    print("ROUTE SAFETY DATA:", route_safety_data[:2] if route_safety_data else None)
+    print("INITIAL SAFETY FACTORS:", safety_factors)
+    print("ROUTE INPUT SCORES:", route_data.crime_score, route_data.traffic_score, route_data.road_score, route_data.accident_score)
 
     if route_safety_data:
         safety_factors = calculate_route_safety_factors(
@@ -1500,7 +1741,11 @@ def reroute(route_data: RerouteRequest):
         accident_score=safety_factors["accident_score"]
     )
 
-    risk_level = get_risk_level(safety_score)
+    risk_level = (
+        get_risk_level(safety_score)
+        if safety_score is not None
+        else "Unavailable"
+    )
 
     return {
         "message": "New route generated successfully",

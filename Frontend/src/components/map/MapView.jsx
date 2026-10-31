@@ -88,6 +88,7 @@ const MapBoundsAdjuster = ({ coordinates }) => {
 export const MapView = ({
   routes = [],
   selectedRouteId = null,
+  selectedCategory = 'safest',
   onSelectRoute = () => {},
   currentLocation = { lat: 28.6315, lng: 77.2167, name: 'Connaught Place' },
   destinationLocation = { lat: 28.5280, lng: 77.2050, name: 'Saket' },
@@ -99,7 +100,28 @@ export const MapView = ({
   const centerPosition = currentLocation ? [currentLocation.lat, currentLocation.lng] : [28.6315, 77.2167];
 
   // Derive coordinates for bounds adjustment
-  const activeRoute = routes.find(r => r.id === selectedRouteId) || routes[0];
+  const activeRoute = routes.find(
+    r => String(r.id) === String(selectedRouteId)
+  ) || routes[0];
+  console.log("MAP SELECTED ROUTE:", selectedRouteId, activeRoute?.id, activeRoute?.coordinates?.length);
+  console.log("FIRST COORDINATE:", activeRoute?.coordinates?.[0]);
+  console.log("MIDDLE COORDINATE:", activeRoute?.coordinates?.[Math.floor(activeRoute.coordinates.length / 2)]);
+  
+  const route2 = routes.find(r => String(r.id) === "2");
+  const route3 = routes.find(r => String(r.id) === "3");
+
+  const diffIndex = route2?.coordinates.findIndex((p, i) =>
+    p[0] !== route3?.coordinates[i]?.[0] ||
+    p[1] !== route3?.coordinates[i]?.[1]
+  );
+
+  console.log("ROUTE 2 VS 3 DIFFERENCE:", {
+    diffIndex,
+    route2Point: JSON.stringify(route2?.coordinates[diffIndex]),
+    route3Point: JSON.stringify(route3?.coordinates[diffIndex])
+  });
+
+  console.log("LAST COORDINATE:", activeRoute?.coordinates?.[activeRoute.coordinates.length - 1]);
   const allCoordinates = activeRoute?.coordinates || [
     centerPosition,
     destinationLocation ? [destinationLocation.lat, destinationLocation.lng] : [28.5280, 77.2050]
@@ -182,7 +204,7 @@ export const MapView = ({
         {/* Render Routes Polylines */}
         {showAllRoutes
           ? routes.map((route) => {
-              const isSelected = route.id === selectedRouteId;
+              const isSelected = String(route.id) === String(selectedRouteId);
               return (
                 <Polyline
                   key={route.id}
@@ -214,16 +236,21 @@ export const MapView = ({
             })
           : activeRoute && (
               <Polyline
+                key={activeRoute.id}
                 positions={activeRoute.coordinates}
                 pathOptions={{
-                  color: activeRoute.color || '#10B981',
+                  color:
+                    selectedCategory === 'safest' ? '#10B981' :
+                    selectedCategory === 'balanced' ? '#F97316' :
+                    selectedCategory === 'fastest' ? '#DC2626' :
+                    '#64748B',
                   weight: 7,
                   opacity: 0.95,
                   lineCap: 'round',
                   lineJoin: 'round'
                 }}
               />
-            )}
+          )}
 
         {/* Emergency Services Pin Layer (Police, Hospital, Fire, Pharmacy) */}
         {emergencyServices.map((service) => {

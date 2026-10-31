@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   X,
   ShieldCheck,
@@ -94,6 +94,29 @@ export const SafetyBreakdownModal = ({
             </div>
           </div>
 
+          {/* Incomplete Data Warning */}
+          {route.provisional && (
+            <div className="p-4 rounded-xl border border-amber-300 bg-amber-50">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-amber-900">
+                    Partial Safety Assessment
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    This route's safety score is based on limited available data.
+                    Some safety parameters are unavailable.
+                  </p>
+                  {route.dataCoverage != null && (
+                    <p className="text-xs font-semibold text-amber-900 mt-2">
+                      Data coverage: {route.dataCoverage}%
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Breakdown Score Bars */}
           <div>
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
@@ -109,7 +132,11 @@ export const SafetyBreakdownModal = ({
                     <Lightbulb className="w-4 h-4 text-amber-500" />
                     Street Lighting & Active Lumens
                   </span>
-                  <span className="text-slate-900">{safetyBreakdown.streetLightingScore}/100</span>
+                  <span className="text-slate-900">
+                    {safetyBreakdown.streetLightingScore > 0
+                      ? `${safetyBreakdown.streetLightingScore}/100`
+                      : 'Data unavailable'}
+                  </span>
                 </div>
                 <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
                   <div
@@ -119,50 +146,58 @@ export const SafetyBreakdownModal = ({
                 </div>
               </div>
 
-              {/* Crime Risk (Lower is safer) */}
-              <div>
-                <div className="flex justify-between text-xs font-bold mb-1">
-                  <span className="flex items-center gap-1.5 text-slate-700">
-                    <ShieldAlert className="w-4 h-4 text-red-500" />
-                    Historical Crime Risk Incident Index (Lower is Better)
-                  </span>
-                  <span className={safetyBreakdown.crimeRiskScore < 25 ? 'text-emerald-600' : 'text-red-600'}>
-                    {safetyBreakdown.crimeRiskScore}/100 {safetyBreakdown.crimeRiskScore < 25 ? '(Very Safe)' : '(Elevated Risk)'}
-                  </span>
-                </div>
-                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      safetyBreakdown.crimeRiskScore < 25 ? 'bg-emerald-500' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${safetyBreakdown.crimeRiskScore}%` }}
-                  />
-                </div>
-              </div>
-
+              {/* Crime Risk */}
+<div>
+  <div className="flex justify-between text-xs font-bold mb-1">
+    <span className="flex items-center gap-1.5 text-slate-700">
+      <ShieldAlert className="w-4 h-4 text-red-500" />
+      Historical Crime Safety Score (Higher is Better)
+    </span>
+    <span className={safetyBreakdown.crimeRiskScore == null ? 'text-slate-500' : safetyBreakdown.crimeRiskScore >= 80 ? 'text-emerald-600' : 'text-red-600'}>
+      {safetyBreakdown.crimeRiskScore == null
+        ? 'Data unavailable'
+        : `${safetyBreakdown.crimeRiskScore}/100 ${safetyBreakdown.crimeRiskScore >= 80 ? '(Very Safe)' : '(Elevated Risk)'}`}
+    </span>
+  </div>
+  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+    <div
+      className={`h-full rounded-full transition-all duration-500 ${safetyBreakdown.crimeRiskScore == null ? 'bg-slate-300' : safetyBreakdown.crimeRiskScore >= 80 ? 'bg-emerald-500' : 'bg-red-500'}`}
+      style={{ width: `${safetyBreakdown.crimeRiskScore == null ? 0 : safetyBreakdown.crimeRiskScore}%` }}
+    />
+  </div>
+</div>
               {/* Live Traffic */}
-              <div>
-                <div className="flex justify-between text-xs font-bold mb-1">
-                  <span className="flex items-center gap-1.5 text-slate-700">
-                    <Car className="w-4 h-4 text-blue-500" />
-                    Live Traffic & Corridor Congestion
-                  </span>
-                  <span className="text-slate-900">{safetyBreakdown.liveTrafficScore}/100 (Flowing)</span>
-                </div>
-                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                    style={{ width: `${safetyBreakdown.liveTrafficScore}%` }}
-                  />
-                </div>
-              </div>
-
+<div>
+  <div className="flex justify-between text-xs font-bold mb-1">
+    <span className="flex items-center gap-1.5 text-slate-700">
+      <Car className="w-4 h-4 text-blue-500" />
+      Live Traffic & Corridor Congestion
+    </span>
+    <span className="text-slate-900">
+      {safetyBreakdown.liveTrafficScore == null
+        ? 'Data unavailable'
+        : `${safetyBreakdown.liveTrafficScore}/100 ${
+            safetyBreakdown.liveTrafficScore >= 80
+              ? '(Smooth)'
+              : safetyBreakdown.liveTrafficScore >= 50
+                ? '(Moderate)'
+                : '(Heavy Congestion)'
+          }`}
+    </span>
+  </div>
+  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+    <div
+      className="h-full bg-blue-500 rounded-full transition-all duration-500"
+      style={{ width: `${safetyBreakdown.liveTrafficScore == null ? 0 : safetyBreakdown.liveTrafficScore}%` }}
+    />
+  </div>
+</div>
               {/* Accident Prone Score */}
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1">
                   <span className="flex items-center gap-1.5 text-slate-700">
                     <AlertCircle className="w-4 h-4 text-purple-500" />
-                    Accident Prone Blackspot Index (Lower is Better)
+                    Accident Safety Score (Higher is Better)
                   </span>
                   <span className="text-slate-900">{safetyBreakdown.accidentProneScore}/100</span>
                 </div>
@@ -180,15 +215,23 @@ export const SafetyBreakdownModal = ({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
               <span className="text-[10px] uppercase font-bold text-slate-400">Police Patrol</span>
-              <p className="text-xs font-extrabold text-slate-800 mt-1">{route.patrolFrequency}</p>
+              <p className="text-xs font-extrabold text-slate-500 mt-1">
+                {route.patrolFrequency || 'Data unavailable'}
+              </p>
             </div>
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
               <span className="text-[10px] uppercase font-bold text-slate-400">CCTV Coverage</span>
-              <p className="text-xs font-extrabold text-slate-800 mt-1">{route.cctvCoverage}</p>
+              <p className="text-xs font-extrabold text-slate-500 mt-1">
+                {route.cctvCoverage || 'Data unavailable'}
+              </p>
             </div>
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center col-span-2 sm:col-span-1">
               <span className="text-[10px] uppercase font-bold text-slate-400">Verified Havens</span>
-              <p className="text-xs font-extrabold text-emerald-600 mt-1">{safetyBreakdown.verifiedSafeHavens} En Route</p>
+              <p className="text-xs font-extrabold text-slate-500 mt-1">
+                {safetyBreakdown.verifiedSafeHavens > 0
+                  ? `${safetyBreakdown.verifiedSafeHavens} En Route`
+                  : 'Data unavailable'}
+              </p>
             </div>
           </div>
 
@@ -214,8 +257,8 @@ export const SafetyBreakdownModal = ({
                   <span className="font-extrabold text-slate-800 text-sm">{weather.visibilityKm} km</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 font-semibold block">Precipitation</span>
-                  <span className="font-extrabold text-slate-800 text-sm">{weather.precipitationChance}%</span>
+                  <span className="text-[10px] text-slate-500 font-semibold block">Rainfall (last hour)</span>
+                  <span className="font-extrabold text-slate-800 text-sm">{weather.precipitationChance} mm/h</span>
                 </div>
               </div>
             </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PhoneCall, UserPlus, ShieldCheck, Trash2, CheckCircle2 } from 'lucide-react';
 import { useSafety } from '../context/SafetyContext';
 import ContactCard from '../components/sos/ContactCard';
+import apiService from '../api/apiService';
 
 export const EmergencyContactsPage = () => {
   const { contacts, setContacts } = useSafety();
@@ -10,24 +11,31 @@ export const EmergencyContactsPage = () => {
   const [phone, setPhone] = useState('');
   const [relationship, setRelationship] = useState('Parent');
 
-  const handleAddContact = (e) => {
+  const handleAddContact = async (e) => {
     e.preventDefault();
+
     if (!name || !phone) return;
 
-    const newContact = {
-      id: 'cnt_' + Date.now(),
-      name,
-      phone,
-      relationship,
-      isPrimary: contacts.length === 0,
-      verified: true,
-      notifyOnSOS: true
-    };
+    try {
+      await apiService.addEmergencyContact({
+        name,
+        phone,
+        relation: relationship
+      });
 
-    setContacts([...contacts, newContact]);
-    setName('');
-    setPhone('');
-    setShowAddModal(false);
+      const updatedContacts = await apiService.getEmergencyContacts();
+      setContacts(updatedContacts);
+
+      setName('');
+      setPhone('');
+      setRelationship('Parent');
+      setShowAddModal(false);
+
+      alert('Emergency contact saved successfully!');
+    } catch (err) {
+      console.error('Failed to save contact:', err);
+      alert(err.response?.data?.detail || 'Failed to save emergency contact.');
+    }
   };
 
   return (

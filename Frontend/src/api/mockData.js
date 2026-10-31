@@ -13,10 +13,10 @@ export const MOCK_USER = {
   workAddress: "Barakhamba Road, Connaught Place, Central Delhi",
   locationSharing: true,
   currentLocation: {
-    name: "Connaught Place, Central Delhi",
-    lat: 28.6315,
-    lng: 77.2167,
-    accuracy: 12, // meters
+    name: "Thakur Village, Kandivali East, Mumbai",
+    lat: 19.21386,
+    lng: 72.86698,
+    accuracy: 12,
     timestamp: new Date().toISOString()
   }
 };

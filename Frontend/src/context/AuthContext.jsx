@@ -51,15 +51,29 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  
   const register = async (userData) => {
     setLoading(true);
     try {
-      const data = await apiService.register(userData);
+      // Step 1: Create user account
+      await apiService.register(userData);
+
+      // Step 2: Automatically login after registration
+      const data = await apiService.login({
+        email: userData.email,
+        password: userData.password
+      });
+
+      // Step 3: Save actual backend user and JWT
       setUser(data.user);
       setToken(data.token);
+
       return { success: true };
     } catch (err) {
-      return { success: false, error: err.message || 'Registration failed' };
+      return {
+        success: false,
+        error: err.response?.data?.detail || err.message || 'Registration failed'
+      };
     } finally {
       setLoading(false);
     }

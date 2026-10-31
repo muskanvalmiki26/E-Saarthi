@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useRoute } from '../context/RouteContext';
 import { useSafety } from '../context/SafetyContext';
 import RoutePlannerInput from '../components/routes/RoutePlannerInput';
@@ -8,11 +8,14 @@ import MapView from '../components/map/MapView';
 import { Sparkles, ShieldCheck } from 'lucide-react';
 
 export const RoutePlannerPage = ({ onRouteChange }) => {
+  const [selectedCategory, setSelectedCategory] = useState('safest');
   const {
     routes,
+    destination,
     selectedRouteId,
     setSelectedRouteId,
     selectedRoute,
+    saveSelectedRouteHistory,
     isModalOpen,
     activeModalRoute,
     openRouteDetails,
@@ -21,9 +24,17 @@ export const RoutePlannerPage = ({ onRouteChange }) => {
 
   const { currentLocation } = useSafety();
 
-  const handleStartNavigation = (route) => {
-    setSelectedRouteId(route.id);
-    onRouteChange('navigate');
+  const routeEnd = selectedRoute?.coordinates?.[selectedRoute.coordinates.length - 1];
+
+  const handleStartNavigation = async (route) => {
+    try {
+      await saveSelectedRouteHistory(route);
+      setSelectedRouteId(route.id);
+      onRouteChange('navigate');
+    } catch (error) {
+      console.error('Failed to save route history:', error);
+      alert('Route history could not be saved. Please try again.');
+    }
   };
 
   return (
@@ -48,28 +59,64 @@ export const RoutePlannerPage = ({ onRouteChange }) => {
         {/* Left Column: Input Form + Route Cards */}
         <div className="lg:col-span-5 space-y-4">
           <RoutePlannerInput />
-
-          {/* 3 Route Cards Section */}
-          <div className="space-y-3">
+          {/* All Available Routes */}
+          <div className="space-y-4">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Available Safe Corridors (3 Found)
+                Available Routes
               </span>
               <span className="text-[11px] text-blue-600 font-bold">
                 Tap card to preview on map
               </span>
             </div>
+            {['safest', 'balanced', 'fastest'].map((category) => {
+              const route = routes.find((r) =>
+                r.recommendedCategories?.includes(category)
+              );
 
-            {routes.map((route) => (
-              <RouteCard
-                key={route.id}
-                route={route}
-                isSelected={route.id === selectedRouteId}
-                onSelect={() => setSelectedRouteId(route.id)}
-                onInspectSafety={openRouteDetails}
-                onStartNavigation={handleStartNavigation}
-              />
-            ))}
+              if (!route) return null;
+
+              const categoryDetails = {
+                safest: {
+                  tagType: 'safe',
+                  name: 'Safest Route',
+                  tag: 'Safest',
+                },
+                balanced: {
+                  tagType: 'balanced',
+                  name: 'Balanced Route',
+                  tag: 'Balanced',
+                },
+                fastest: {
+                  tagType: 'fastest',
+                  name: 'Fastest Route',
+                  tag: 'Fastest',
+                },
+              };
+
+              const categoryRoute = {
+                ...route,
+                ...categoryDetails[category],
+              };
+
+              return (
+                <div key={category} className="space-y-2">
+                  <RouteCard
+                    route={categoryRoute}
+                    isSelected={
+                      String(route.id) === String(selectedRouteId) &&
+                      selectedCategory === category
+                    }
+                    onSelect={() => {
+                      setSelectedRouteId(route.id);
+                      setSelectedCategory(category);
+                    }}
+                    onInspectSafety={() => openRouteDetails(route)}
+                    onStartNavigation={handleStartNavigation}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -78,9 +125,15 @@ export const RoutePlannerPage = ({ onRouteChange }) => {
           <MapView
             routes={routes}
             selectedRouteId={selectedRouteId}
+            selectedCategory={selectedCategory}
             onSelectRoute={(id) => setSelectedRouteId(id)}
             currentLocation={currentLocation}
-            destinationLocation={{ lat: 28.5280, lng: 77.2050, name: 'Saket District Centre' }}
+            destinationLocation={
+              routeEnd
+                ? { lat: routeEnd[0], lng: routeEnd[1], name: destination }
+                : null
+            }
+            showAllRoutes={false}
             height="440px"
           />
 

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import apiService from '../api/apiService';
-import { MOCK_USER, MOCK_EMERGENCY_CONTACTS } from '../api/mockData';
+import { MOCK_USER } from '../api/mockData';
 
 const SafetyContext = createContext(null);
 
@@ -35,7 +35,20 @@ export const SafetyProvider = ({ children }) => {
       }
     );
   }, []);
-  const [contacts, setContacts] = useState(MOCK_EMERGENCY_CONTACTS);
+  const [contacts, setContacts] = useState([]);
+
+  useEffect(() => {
+    const loadContacts = async () => {
+      try {
+        const data = await apiService.getEmergencyContacts();
+        setContacts(data);
+      } catch (err) {
+        console.error('Failed to load emergency contacts:', err);
+      }
+    };
+
+    loadContacts();
+  }, []);
 
   // Live navigation hazards & deviations
   const [activeHazards, setActiveHazards] = useState([
@@ -124,10 +137,26 @@ export const SafetyProvider = ({ children }) => {
     }
   };
 
-  const cancelSOS = () => {
-    setIsSOSActive(false);
-    setSosAlertData(null);
-    stopSirenSound();
+  const cancelSOS = async () => {
+    try {
+      const sosId = sosAlertData?.sosId || sosAlertData?.sos_id;
+
+      if (!sosId) {
+        alert('SOS ID not found. Cannot resolve SOS.');
+        return;
+      }
+
+      await apiService.resolveSOS(sosId);
+
+      setIsSOSActive(false);
+      setSosAlertData(null);
+      stopSirenSound();
+
+      alert('SOS resolved successfully!');
+    } catch (err) {
+      console.error('Failed to resolve SOS:', err);
+      alert(err.response?.data?.detail || 'Failed to resolve SOS.');
+    }
   };
 
   const toggleLocationSharing = () => {

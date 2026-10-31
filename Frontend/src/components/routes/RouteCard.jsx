@@ -10,40 +10,55 @@ export const RouteCard = ({
 }) => {
   const isSafe = route.tagType === 'safe';
   const isBalanced = route.tagType === 'balanced';
-  const isRisky = route.tagType === 'risky';
-
+  const isFastest = route.tagType === 'fastest';
+  const isAlternative = !isSafe && !isBalanced && !isFastest;
   // Badge colors and border styling based on route type
   const badgeColors = isSafe
     ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
     : isBalanced
-    ? 'bg-amber-50 text-amber-700 border-amber-300'
-    : 'bg-red-50 text-red-700 border-red-300';
+    ? 'bg-orange-50 text-orange-700 border-orange-300'
+    : isFastest
+    ? 'bg-red-50 text-red-700 border-red-300'
+    : 'bg-slate-50 text-slate-600 border-slate-300';
 
   const scoreBadgeBg = isSafe
     ? 'bg-emerald-600 text-white'
     : isBalanced
-    ? 'bg-amber-500 text-white'
-    : 'bg-red-500 text-white';
+    ? 'bg-orange-500 text-white'
+    : isFastest
+    ? 'bg-red-600 text-white'
+    : 'bg-slate-600 text-white';
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+      
       className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer bg-white ${
         isSelected
           ? isSafe
             ? 'border-emerald-500 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-500/20'
             : isBalanced
-            ? 'border-amber-500 shadow-lg shadow-amber-500/10 ring-2 ring-amber-500/20'
-            : 'border-red-500 shadow-lg shadow-red-500/10 ring-2 ring-red-500/20'
+            ? 'border-orange-500 shadow-lg shadow-orange-500/10 ring-2 ring-orange-500/20'
+            : isFastest
+            ? 'border-red-500 shadow-lg shadow-red-500/10 ring-2 ring-red-500/20'
+            : 'border-slate-400 shadow-lg shadow-slate-400/10 ring-2 ring-slate-400/20'
           : 'border-slate-200/90 hover:border-slate-300 shadow-sm hover:shadow'
-      }`}
+      }`} 
     >
       {/* Top Header with Tag & Safety Score */}
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="flex items-center gap-2">
           <span className={`text-[11px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${badgeColors} flex items-center gap-1 tracking-wider`}>
             {isSafe && <Sparkles className="w-3 h-3 fill-emerald-600 text-emerald-600" />}
-            {isRisky && <AlertTriangle className="w-3 h-3" />}
+            {isFastest && <AlertTriangle className="w-3 h-3" />}
             {route.tag}
           </span>
           <span className="text-xs font-semibold text-slate-500">
@@ -114,7 +129,13 @@ export const RouteCard = ({
               onStartNavigation(route);
             }}
             className={`py-2 px-4 text-xs font-bold text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 ${
-              isSafe ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
+              isSafe
+                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
+                : isBalanced
+                ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/30'
+                : isFastest
+                ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
+                : 'bg-slate-600 hover:bg-slate-700 shadow-slate-600/30'
             }`}
           >
             <span>Navigate</span>

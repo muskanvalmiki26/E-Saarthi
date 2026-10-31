@@ -65,6 +65,24 @@ export const apiService = {
           return { latitude: Number(lat), longitude: Number(lng) };
         }
 
+        // Accept coordinates entered as "latitude, longitude"
+        if (typeof location === 'string') {
+          const parts = location.split(',').map(value => Number(value.trim()));
+
+          if (
+            parts.length === 2 &&
+            Number.isFinite(parts[0]) &&
+            Number.isFinite(parts[1]) &&
+            parts[0] >= -90 && parts[0] <= 90 &&
+            parts[1] >= -180 && parts[1] <= 180
+          ) {
+            return {
+              latitude: parts[0],
+              longitude: parts[1]
+            };
+          }
+        }
+
         // Convert a text address into coordinates
         const address = typeof location === 'string' ? location : location?.name;
 
@@ -102,9 +120,31 @@ export const apiService = {
         destination_longitude: dst.longitude
       }); 
 
-      return response.data;
+      
+      return {
+        ...response.data,
+        routeHistoryCoordinates: {
+          current_latitude: src.latitude,
+          current_longitude: src.longitude,
+          destination_latitude: dst.latitude,
+          destination_longitude: dst.longitude
+        }
+      };
+
+
     } catch (err) {
       console.error('[E-Saarthi API] Route calculation failed:', err.message);
+      throw err;
+    }
+  },
+
+  // Save selected route to history
+  async saveRouteHistory(routeData) {
+    try {
+      const response = await apiClient.post('/route-history', routeData);
+      return response.data;
+    } catch (err) {
+      console.error('[E-Saarthi API] Route history save failed:', err.message);
       throw err;
     }
   },
@@ -206,7 +246,46 @@ export const apiService = {
       console.error('[E-Saarthi API] Emergency contacts failed:', err.message);
       throw err;
     }
-  }
-  };
+  },
+
+  async addEmergencyContact({ name, phone, relation }) {
+    try {
+      const response = await apiClient.post('/emergency-contacts', {
+        name,
+        phone,
+        relation
+      });
+      return response.data;
+    } catch (err) {
+      console.error('[E-Saarthi API] Add contact failed:', err.message);
+      throw err;
+    }
+  },
+
+  async deleteEmergencyContact(contactId) {
+    try {
+      const response = await apiClient.delete(
+        `/emergency-contact/${contactId}`
+      );
+      return response.data;
+    } catch (err) {
+      console.error('[E-Saarthi API] Delete contact failed:', err.message);
+      throw err;
+    }
+  },
+
+  async resolveSOS(sosId) {
+    try {
+      const response = await apiClient.put(
+        `/sos/${sosId}/resolve`
+      );
+      return response.data;
+    } catch (err) {
+      console.error('[E-Saarthi API] SOS resolve failed:', err.message);
+      throw err;
+    }
+  },
+
+};
 
 export default apiService;

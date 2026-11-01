@@ -26,6 +26,31 @@ export const RouteHistoryPage = ({ onRouteChange }) => {
   const formatLocation = (lat, lng) =>
     `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
 
+  const getLocationLabel = (item) => {
+    try {
+      const key = [
+        item.current_latitude,
+        item.current_longitude,
+        item.destination_latitude,
+        item.destination_longitude
+      ].map(value => Number(value).toFixed(5)).join(',');
+
+      const names = JSON.parse(
+        localStorage.getItem('esaarthi_route_names') || '{}'
+      );
+
+      const saved = names[key];
+
+      if (saved?.origin && saved?.destination) {
+        return `${saved.origin} to ${saved.destination}`;
+      }
+    } catch (error) {
+      console.warn('Unable to read saved route names:', error);
+    }
+
+    return `${formatLocation(item.current_latitude, item.current_longitude)} to ${formatLocation(item.destination_latitude, item.destination_longitude)}`;
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
@@ -67,10 +92,7 @@ export const RouteHistoryPage = ({ onRouteChange }) => {
                   </span>
                 </div>
 
-                <h4 className="font-bold text-slate-900 text-sm">
-                  {formatLocation(item.current_latitude, item.current_longitude)}
-                  {' to '}
-                  {formatLocation(item.destination_latitude, item.destination_longitude)}
+                <h4 className="font-bold text-slate-900 text-sm">{getLocationLabel(item)}
                 </h4>
 
                 <p className="text-xs text-slate-500 mt-1">
@@ -103,4 +125,5 @@ export const RouteHistoryPage = ({ onRouteChange }) => {
 };
 
 export default RouteHistoryPage;
+
 

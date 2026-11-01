@@ -154,11 +154,37 @@ export const RouteProvider = ({ children }) => {
       throw new Error('Route coordinates are not available.');
     }
 
-    return await apiService.saveRouteHistory({
+    const historyData = {
       ...routeHistoryCoordinates,
       selected_route: route.routeType || route.type || route.name || `Route ${route.id}`,
       safety_score: Number(route.safetyScore)
-    });
+    };
+
+    const saved = await apiService.saveRouteHistory(historyData);
+
+    try {
+      const key = [
+        historyData.current_latitude,
+        historyData.current_longitude,
+        historyData.destination_latitude,
+        historyData.destination_longitude
+      ].map(value => Number(value).toFixed(5)).join(',');
+
+      const names = JSON.parse(
+        localStorage.getItem('esaarthi_route_names') || '{}'
+      );
+
+      names[key] = { origin, destination };
+
+      localStorage.setItem(
+        'esaarthi_route_names',
+        JSON.stringify(names)
+      );
+    } catch (error) {
+      console.warn('Route names could not be saved locally:', error);
+    }
+
+    return saved;
   };
 
 
@@ -206,3 +232,4 @@ export const useRoute = () => {
 };
 
 export default RouteContext;
+

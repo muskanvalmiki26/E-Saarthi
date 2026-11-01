@@ -1,42 +1,47 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { LifeBuoy, Filter, MapPin, PhoneCall, ShieldCheck } from 'lucide-react';
 import ServiceCard from '../components/emergency/ServiceCard';
 import MapView from '../components/map/MapView';
 import apiService from '../api/apiService';
-import { useSafety } from '../context/SafetyContext';
+
 import { useRoute } from '../context/RouteContext';
 
 export const EmergencyServicesPage = ({ onRouteChange }) => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [radiusKm, setRadiusKm] = useState(10);
-  const { currentLocation } = useSafety();
-  const { setDestination } = useRoute();
+  const { origin, setDestination, selectedRoute, calculateRoutes } = useRoute();
+  const routeStart = selectedRoute?.coordinates?.[0];
+  const serviceLocation = routeStart?.length >= 2 ? { lat: Number(routeStart[0]), lng: Number(routeStart[1]) } : null;
 
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const categories = [
-    { id: 'all', label: 'All Services', icon: '📍' },
-    { id: 'police', label: 'Police Stations', icon: '👮' },
-    { id: 'hospital', label: 'Hospitals', icon: '🏥' },
-    { id: 'fire_station', label: 'Fire Stations', icon: '🚒' },
-    { id: 'pharmacy', label: 'Pharmacies', icon: '💊' },
-    { id: 'ambulance', label: 'Ambulance Services', icon: '🚑' }
-  ];
+  { id: 'all', label: 'All Services', icon: '\u{1F4CD}' },
+  { id: 'police', label: 'Police Stations', icon: '\u{1F46E}' },
+  { id: 'hospital', label: 'Hospitals', icon: '\u{1F3E5}' },
+  { id: 'fire_station', label: 'Fire Stations', icon: '\u{1F692}' },
+  { id: 'pharmacy', label: 'Pharmacies', icon: '\u{1F48A}' },
+  { id: 'ambulance', label: 'Ambulance Services', icon: '\u{1F691}' }
+];
   useEffect(() => {
     let cancelled = false;
     
     const fetchServices = async () => {
-      if (!currentLocation?.lat || !currentLocation?.lng) return;
+      if (serviceLocation?.lat == null || serviceLocation?.lng == null) {
+        setServices([]);
+        setError('Please calculate a route first to find nearby emergency services.');
+        return;
+      }
 
       setLoading(true);
       setError('');
 
       try {
         const result = await apiService.getNearbyServices({
-          lat: currentLocation.lat,
-          lng: currentLocation.lng,
+          lat: serviceLocation.lat,
+          lng: serviceLocation.lng,
           type: selectedCategory,
           radius: radiusKm,
         });
@@ -50,8 +55,9 @@ export const EmergencyServicesPage = ({ onRouteChange }) => {
               lng: service.longitude,
               type: service.service_type,
               categoryLabel: service.service_type?.replace('_', ' '),
-              address: service.address || service.name || 'Address unavailable',
-              etaMinutes: service.etaMinutes ?? '—',
+              address: service.address || null,
+              distanceKm: Number(service.distanceKm ?? service.distance_km ?? 0),
+              etaMinutes: Number.isFinite(Number(service.distanceKm ?? service.distance_km)) ? Math.max(1, Math.round((Number(service.distanceKm ?? service.distance_km) * 1.3 / 4.5) * 60)) : null,
            }))
           );
         }
@@ -74,9 +80,11 @@ export const EmergencyServicesPage = ({ onRouteChange }) => {
     return () => {
       cancelled = true;
     };
-  }, [currentLocation?.lat, currentLocation?.lng, radiusKm, selectedCategory]);
+  }, [serviceLocation?.lat, serviceLocation?.lng, radiusKm, selectedCategory]);
 
-  const filteredServices = services.filter((service) => {
+  const uniqueServices = services.filter((service, index) => services.findIndex((item) => item.type === service.type && String(item.name ?? '').trim().toLowerCase() === String(service.name ?? '').trim().toLowerCase()) === index);
+
+  const filteredServices = uniqueServices.filter((service) => {
     const type = String(
       service.type ?? service.service_type ?? ''
     ).toLowerCase();
@@ -92,9 +100,16 @@ export const EmergencyServicesPage = ({ onRouteChange }) => {
 
     return distance == null || Number(distance) <= radiusKm;
   });
-  const handleNavigateHere = (service) => {
-    setDestination(service.name);
-    onRouteChange('routes');
+  const handleNavigateHere = async (service) => {
+    const target = service.address || service.name;
+    setDestination(target);
+
+    try {
+      await calculateRoutes(origin, target);
+      onRouteChange('routes');
+    } catch (err) {
+      setError(err.message || 'Unable to calculate route to this facility.');
+    }
   };
 
 
@@ -106,11 +121,11 @@ export const EmergencyServicesPage = ({ onRouteChange }) => {
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
             Emergency Services Directory
             <span className="text-xs bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
-              Verified 24x7
+              Nearby Facilities
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Geofenced emergency shelters, PCR booths, and round-the-clock emergency care centers.
+            Nearby hospitals, police stations, fire stations and pharmacies.
           </p>
         </div>
 
@@ -153,7 +168,7 @@ export const EmergencyServicesPage = ({ onRouteChange }) => {
         {/* Left Side: Service Cards */}
         <div className="lg:col-span-7 space-y-3">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
-            Found {filteredServices.length} Verified Facilities
+            Found {} Nearby Facilities
             {loading && (
               <p className="text-sm text-blue-600">
                 Loading nearby emergency services...
@@ -184,7 +199,7 @@ export const EmergencyServicesPage = ({ onRouteChange }) => {
         <div className="lg:col-span-5">
           <div className="sticky top-24">
             <MapView
-              currentLocation={currentLocation}
+              currentLocation={serviceLocation}
               emergencyServices={filteredServices}
               showAllRoutes={false}
               height="580px"
@@ -197,3 +212,10 @@ export const EmergencyServicesPage = ({ onRouteChange }) => {
 };
 
 export default EmergencyServicesPage;
+
+
+
+
+
+
+

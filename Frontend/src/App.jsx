@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SafetyProvider } from './context/SafetyContext';
 import { RouteProvider } from './context/RouteContext';
@@ -11,7 +11,6 @@ import LiveNavigationPage from './pages/LiveNavigationPage';
 import EmergencyServicesPage from './pages/EmergencyServicesPage';
 import SOSPage from './pages/SOSPage';
 import EmergencyContactsPage from './pages/EmergencyContactsPage';
-import CrimeRiskPage from './pages/CrimeRiskPage';
 import RouteHistoryPage from './pages/RouteHistoryPage';
 import ProfilePage from './pages/ProfilePage';
 
@@ -37,8 +36,6 @@ const MainAppContent = () => {
         return <SOSPage />;
       case 'contacts':
         return <EmergencyContactsPage />;
-      case 'crime-risk':
-        return <CrimeRiskPage />;
       case 'history':
         return <RouteHistoryPage onRouteChange={setCurrentRoute} />;
       case 'profile':
@@ -68,3 +65,4 @@ export function App() {
 }
 
 export default App;
+

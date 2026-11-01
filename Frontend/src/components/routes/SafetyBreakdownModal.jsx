@@ -82,7 +82,7 @@ export const SafetyBreakdownModal = ({
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
                     isSafe ? 'bg-emerald-200 text-emerald-900' : isBalanced ? 'bg-amber-200 text-amber-900' : 'bg-red-200 text-red-900'
                   }`}>
-                    {route.riskLevel}
+                    {route.provisional ? 'Provisional Assessment' : route.riskLevel}
                   </span>
                 </div>
               </div>
@@ -90,7 +90,7 @@ export const SafetyBreakdownModal = ({
 
             <div className="text-right hidden sm:block">
               <span className="text-xs text-slate-500 font-semibold block">ETA & Distance</span>
-              <span className="text-base font-extrabold text-slate-900">{route.etaMinutes} mins • {route.distanceKm} km</span>
+              <span className="text-base font-extrabold text-slate-900">{route.etaMinutes} mins - {route.distanceKm} km</span>
             </div>
           </div>
 
@@ -250,7 +250,7 @@ export const SafetyBreakdownModal = ({
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Temperature</span>
-                  <span className="font-extrabold text-slate-800 text-sm">{weather.tempC}°C</span>
+                  <span className="font-extrabold text-slate-800 text-sm">{weather.tempC} deg C</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Visibility</span>
@@ -293,3 +293,7 @@ export const SafetyBreakdownModal = ({
 };
 
 export default SafetyBreakdownModal;
+
+
+
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   Shield,
   LayoutDashboard,
@@ -6,7 +6,6 @@ import {
   Navigation,
   LifeBuoy,
   PhoneCall,
-  Flame,
   User,
   LogOut,
   ChevronLeft,
@@ -30,7 +29,6 @@ export const Sidebar = ({ currentRoute, onRouteChange, isMobileOpen = false, onC
     { id: 'emergency-services', label: 'Emergency Services', icon: LifeBuoy },
     { id: 'sos', label: 'SOS Emergency', icon: AlertTriangle, isAlert: true },
     { id: 'contacts', label: 'Emergency Contacts', icon: PhoneCall },
-    { id: 'crime-risk', label: 'Crime Risk Map', icon: Flame },
     { id: 'history', label: 'Route History', icon: History },
   ];
 
@@ -226,3 +224,4 @@ export const Sidebar = ({ currentRoute, onRouteChange, isMobileOpen = false, onC
 };
 
 export default Sidebar;
+

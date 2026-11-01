@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Flame, ShieldAlert, AlertTriangle, Eye, ShieldCheck, MapPin } from 'lucide-react';
 import MapView from '../components/map/MapView';
 import { useRoute } from '../context/RouteContext';
@@ -9,9 +9,9 @@ export const CrimeRiskPage = () => {
   const { currentLocation } = useSafety();
 
   const riskHotspots = [
-    { name: "Sanjay Van Peripheral Bypass", level: "High Risk", time: "After 8:00 PM", notes: "Low lighting, dense foliage, reported isolated incidents" },
-    { name: "Ring Road Lajpat Nagar Underpass", level: "Moderate Risk", time: "10:00 PM - 5:00 AM", notes: "Construction area, blind corners, PCR van station nearby" },
-    { name: "Janpath Central Commercial Corridor", level: "Low / Safe", time: "24x7 Monitored", notes: "Frequent police patrols, 96% street lumen density, 4 safe havens" }
+    { name: "Sanjay Van Peripheral Bypass", level: "High Risk", time: "Demo Data", notes: "Illustrative high-risk hotspot for demonstration." },
+    { name: "Ring Road Lajpat Nagar Underpass", level: "Moderate Risk", time: "Demo Data", notes: "Illustrative moderate-risk hotspot for demonstration." },
+    { name: "Janpath Central Commercial Corridor", level: "Low / Safe", time: "Demo Data", notes: "Illustrative low-risk hotspot for demonstration." }
   ];
 
   return (
@@ -22,7 +22,7 @@ export const CrimeRiskPage = () => {
           <span>Crime Risk & Safe Haven Heatmap</span>
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          AI synthesized data from Delhi Police Open FIR registries, crowd-sourced audit reports, and civic street lamp sensors.
+          Illustrative sample crime-risk data for demonstration only. These hotspots are not live reports or route-specific safety assessments.
         </p>
       </div>
 
@@ -38,7 +38,7 @@ export const CrimeRiskPage = () => {
 
         <div className="lg:col-span-4 space-y-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Monitored Hotspots En Route
+            Sample Hotspots (Delhi Demo Data)
           </h3>
 
           {riskHotspots.map((spot, i) => (
@@ -62,3 +62,4 @@ export const CrimeRiskPage = () => {
 };
 
 export default CrimeRiskPage;
+

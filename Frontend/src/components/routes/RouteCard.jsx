@@ -62,7 +62,7 @@ export const RouteCard = ({
             {route.tag}
           </span>
           <span className="text-xs font-semibold text-slate-500">
-            {route.riskLevel}
+            {route.provisional ? 'Provisional Assessment' : route.riskLevel}
           </span>
         </div>
 
@@ -148,3 +148,4 @@ export const RouteCard = ({
 };
 
 export default RouteCard;
+

@@ -19,7 +19,7 @@ export const RouteCard = ({
     ? 'bg-orange-50 text-orange-700 border-orange-300'
     : isFastest
     ? 'bg-red-50 text-red-700 border-red-300'
-    : 'bg-slate-50 text-slate-600 border-slate-300';
+    : 'bg-blue-50 text-blue-700 border-blue-300';
 
   const scoreBadgeBg = isSafe
     ? 'bg-emerald-600 text-white'
@@ -27,7 +27,7 @@ export const RouteCard = ({
     ? 'bg-orange-500 text-white'
     : isFastest
     ? 'bg-red-600 text-white'
-    : 'bg-slate-600 text-white';
+    : 'bg-blue-600 text-white';
 
   return (
     <div
@@ -49,7 +49,7 @@ export const RouteCard = ({
             ? 'border-orange-500 shadow-lg shadow-orange-500/10 ring-2 ring-orange-500/20'
             : isFastest
             ? 'border-red-500 shadow-lg shadow-red-500/10 ring-2 ring-red-500/20'
-            : 'border-slate-400 shadow-lg shadow-slate-400/10 ring-2 ring-slate-400/20'
+            : 'border-blue-500 shadow-lg shadow-blue-500/10 ring-2 ring-blue-500/20'
           : 'border-slate-200/90 hover:border-slate-300 shadow-sm hover:shadow'
       }`} 
     >
@@ -135,7 +135,7 @@ export const RouteCard = ({
                 ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/30'
                 : isFastest
                 ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
-                : 'bg-slate-600 hover:bg-slate-700 shadow-slate-600/30'
+                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
             }`}
           >
             <span>Navigate</span>

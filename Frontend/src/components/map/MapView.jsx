@@ -133,15 +133,11 @@ export const MapView = ({
       <div className="absolute top-2.5 left-2.5 z-[1000] bg-white/95 backdrop-blur-md px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-md border border-slate-200/80 text-[10px] sm:text-xs font-semibold flex flex-wrap items-center gap-2 sm:gap-3 max-w-[calc(100%-20px)]">
         <div className="flex items-center gap-1 text-emerald-600">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-          <span>Safe (Green)</span>
+          <span>Recommended Route (Safest / Balanced / Fastest)</span>
         </div>
-        <div className="flex items-center gap-1 text-amber-600">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-          <span>Balanced</span>
-        </div>
-        <div className="flex items-center gap-1 text-red-600">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-          <span>Fastest / High Risk</span>
+        <div className="flex items-center gap-1 text-blue-600">
+          <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+          <span>Alternative Routes (Blue)</span>
         </div>
       </div>
 
@@ -210,7 +206,12 @@ export const MapView = ({
                   key={route.id}
                   positions={route.coordinates}
                   pathOptions={{
-                    color: route.color || (route.tagType === 'safe' ? '#10B981' : route.tagType === 'balanced' ? '#F59E0B' : '#EF4444'),
+                    color:
+  route.tagType === 'safe' ? '#10B981' :
+  route.tagType === 'balanced' ? '#F59E0B' :
+  route.tagType === 'fastest' ? '#EF4444' :
+  route.tagType === 'alternative' ? '#3B82F6' :
+  '#64748B',
                     weight: isSelected ? 7 : 4,
                     opacity: isSelected ? 0.95 : 0.45,
                     dashArray: isSelected ? undefined : '6, 6',
@@ -305,3 +306,5 @@ export const MapView = ({
 };
 
 export default MapView;
+
+

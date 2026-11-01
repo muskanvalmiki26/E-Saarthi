@@ -40,7 +40,14 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -659,7 +666,7 @@ def create_sos(
             "latitude": sos.latitude,
             "longitude": sos.longitude,
             "status": sos.status,
-            "emergency_contacts": emergency_contacts
+            "emergency_contacts": emergency_contacts,
         }
 
     finally:
@@ -1082,7 +1089,7 @@ def get_routes(route_data: RouteRequest):
         "alternative_routes": {
             "target_count": 3,
             "share_factor": 0.8,
-            "weight_factor": 2
+            "weight_factor": 3
         },
         "format": "geojson"
     }
@@ -1111,7 +1118,12 @@ def get_routes(route_data: RouteRequest):
             "message": "The routing service returned an unexpected response."
         }
 
+    print("ORS METADATA:", result.get("metadata", {}))
     routes = result.get("routes", [])
+    print("ORS TOTAL ROUTES:", len(routes))
+    print("ORS ROUTE SUMMARIES:", [
+        r.get("summary", {}) for r in routes
+    ])
 
     if not routes:
         return {
@@ -1694,7 +1706,12 @@ def reroute(route_data: RerouteRequest):
             "message": "The routing service returned an unexpected response."
         }
 
+    print("ORS METADATA:", result.get("metadata", {}))
     routes = result.get("routes", [])
+    print("ORS TOTAL ROUTES:", len(routes))
+    print("ORS ROUTE SUMMARIES:", [
+        r.get("summary", {}) for r in routes
+    ])
 
     if not routes:
         return {
@@ -1704,12 +1721,10 @@ def reroute(route_data: RerouteRequest):
 
     route = routes[0]
 
-    route_coordinates = route["geometry"]["coordinates"]
+    route_coordinates = decode_polyline(route["geometry"])
 
     route_safety_data = get_route_safety_data(route_coordinates)
     print("ROUTE SAFETY DATA:", route_safety_data[:2] if route_safety_data else None)
-    print("INITIAL SAFETY FACTORS:", safety_factors)
-    print("ROUTE INPUT SCORES:", route_data.crime_score, route_data.traffic_score, route_data.road_score, route_data.accident_score)
 
     if route_safety_data:
         safety_factors = calculate_route_safety_factors(
@@ -1770,3 +1785,11 @@ def reroute(route_data: RerouteRequest):
 
         "geometry": route["geometry"]
     }
+
+
+
+
+
+
+
+

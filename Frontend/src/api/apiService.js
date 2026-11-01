@@ -150,6 +150,16 @@ export const apiService = {
   },
 
 
+  // Fetch logged-in user's route history
+  async getRouteHistory() {
+    try {
+      const response = await apiClient.get('/route-history');
+      return response.data;
+    } catch (err) {
+      console.error('[E-Saarthi API] Route history fetch failed:', err.message);
+      throw err;
+    }
+  },
   // 3. Route Details & Safety Breakdown Endpoint
   async getRouteDetails(routeId) {
     try {
